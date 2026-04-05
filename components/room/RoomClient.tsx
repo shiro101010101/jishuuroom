@@ -127,6 +127,19 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
 
   // ── UI ──
   const [activeTab, setActiveTab] = useState<'stats' | 'bgm' | 'activity' | 'schedule' | 'safety'>('stats')
+
+  // ── Language ──
+  const [lang, setLang] = useState<Lang>('ja')
+  useEffect(() => {
+    const saved = localStorage.getItem('lang') as Lang
+    if (saved === 'ja' || saved === 'en') setLang(saved)
+  }, [])
+  const T = translations[lang]
+  const toggleLang = () => {
+    const next: Lang = lang === 'ja' ? 'en' : 'ja'
+    setLang(next)
+    localStorage.setItem('lang', next)
+  }
   const [activeMobScreen, setActiveMobScreen] = useState<'timer' | 'room' | 'friends' | 'stats'>('timer')
   const [notifications, setNotifications] = useState([{ icon: '🏠', text: `「${room.name}」に入室しました`, time: 'たった今' }])
   const [bgmPlaying, setBgmPlaying] = useState<string | null>(null)
@@ -230,7 +243,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
     allData.sort((a: any, b: any) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())
 
     if (allData) {
-      const hostIds = [...new Set(allData.map((s: any) => s.host_id))]
+      const hostIds = Array.from(new Set(allData.map((s: any) => s.host_id)))
       const { data: profiles } = await supa.from('profiles')
         .select('id, display_name')
         .in('id', hostIds.length > 0 ? hostIds : ['none'])
@@ -853,7 +866,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
             <button className={`${styles.ctrlBtn} ${styles.ctrlBtnDanger}`} onClick={async () => {
                 // Leave room_members first
                 const supa = createClient()
-                await supa as any).from('room_members').delete().eq('room_id', room.id).eq('user_id', profile.id)
+                await supa.from('room_members').delete().eq('room_id', room.id).eq('user_id', profile.id)
                 router.push('/')
               }}>{T.leaveRoom}</button>
           </div>

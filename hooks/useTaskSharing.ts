@@ -34,8 +34,7 @@ export function useTaskSharing(userId: string, roomId: string) {
   // 共有タスクを取得
   const fetchSharedTasks = useCallback(async () => {
     // 自分のフレンドIDを取得
-    const { data: friendships } = await supabase
-       as any).from('friendships')
+    const { data: friendships } = await (supabase as any).from('friendships')
       .select('requester_id, addressee_id')
       .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`)
       .eq('status', 'accepted')
@@ -45,8 +44,7 @@ export function useTaskSharing(userId: string, roomId: string) {
     )
 
     // 同室メンバーのIDを取得
-    const { data: roomMembers } = await supabase
-       as any).from('room_members')
+    const { data: roomMembers } = await (supabase as any).from('room_members')
       .select('user_id')
       .eq('room_id', roomId)
 
@@ -59,8 +57,7 @@ export function useTaskSharing(userId: string, roomId: string) {
       return
     }
 
-    let query = supabase
-       as any).from('tasks')
+    let query = (supabase as any).from('tasks')
       .select('*, profiles(display_name, avatar_url)')
       .eq('is_shared', true)
       .neq('user_id', userId)
@@ -88,8 +85,7 @@ export function useTaskSharing(userId: string, roomId: string) {
 
   // スタディペアを取得
   const fetchStudyPairs = useCallback(async () => {
-    const { data } = await supabase
-       as any).from('study_pairs')
+    const { data } = await (supabase as any).from('study_pairs')
       .select('*')
       .or(`user_a.eq.${userId},user_b.eq.${userId}`)
       .in('status', ['pending', 'active'])
@@ -98,8 +94,7 @@ export function useTaskSharing(userId: string, roomId: string) {
 
     // パートナー情報を取得
     const partnerIds = data.map((p: any) => p.user_a === userId ? p.user_b : p.user_a)
-    const { data: partnerProfiles } = await supabase
-       as any).from('profiles')
+    const { data: partnerProfiles } = await (supabase as any).from('profiles')
       .select('id, display_name, avatar_url')
       .in('id', partnerIds.length > 0 ? partnerIds : ['none'])
 
