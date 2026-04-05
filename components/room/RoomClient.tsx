@@ -737,7 +737,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
       {showSubjectPicker && (
         <div className={styles.overlay} onClick={() => setShowSubjectPicker(false)}>
           <div className={styles.modal} onClick={e => e.stopPropagation()}>
-            <h3>🎯 勉強科目を選択</h3>
+            <h3>{lang==='ja'?'🎯 勉強科目':'🎯 Subject'}を選択</h3>
             <div style={{ display:'flex', flexWrap:'wrap', gap:8, margin:'16px 0' }}>
               {SUBJECTS.map((s: any) => (
                 <button key={s}
@@ -822,7 +822,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
 
             {/* Subject selector */}
             <div>
-              <div className={styles.secLabel}>🎯 勉強科目</div>
+              <div className={styles.secLabel}>{lang==='ja'?'🎯 勉強科目':'🎯 Subject'}</div>
               <button onClick={() => setShowSubjectPicker(true)} style={{ width:'100%', padding:'8px 12px', background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:8, color:mySubject?'var(--accent)':'var(--muted)', fontSize:12, cursor:'pointer', fontFamily:'inherit', textAlign:'left', transition:'.2s' }}>
                 {mySubject || '科目を選択...'} ▾
               </button>
@@ -830,7 +830,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
 
             {/* Tasks */}
             <div>
-              <div className={styles.secLabel}>✅ タスク管理</div>
+              <div className={styles.secLabel}>{lang==='ja'?'✅ タスク管理':'✅ Tasks'}</div>
               <TaskPanel userId={profile.id} roomId={room.id} tasks={tasks}
                 onAddTask={addTask} onCompleteTask={completeTask} onDeleteTask={deleteTask}
                 onUpdateShare={updateTaskShareLocal}
@@ -839,7 +839,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
 
             {/* Friends */}
             <div>
-              <div className={styles.secLabel}>👥 フレンド</div>
+              <div className={styles.secLabel}>{lang==='ja'?'👥 フレンド':'👥 Friends'}</div>
               <div className={styles.friendList}>
                 {displayFriends.map((f: any) => {
                   const fp = f.profiles as Profile
@@ -868,22 +868,22 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
             {/* Away & Safety settings */}
             <div>
               <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
-                <div className={styles.secLabel} style={{ margin:0 }}>🛡️ 離席・安全設定</div>
+                <div className={styles.secLabel} style={{ margin:0 }}>{lang==='ja'?'🛡️ 離席・安全設定':'🛡️ Safety Settings'}</div>
                 <button onClick={() => setActiveTab('safety')}
                   style={{ fontSize:10, color:'var(--accent)', background:'transparent', border:'none', cursor:'pointer', fontFamily:'inherit', padding:0 }}>
-                  詳細設定 →
+                  {lang==='ja'?'詳細設定 →':'Details →'}
                 </button>
               </div>
 
               {/* Quick status indicators */}
               <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
                 <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'6px 8px', background:'var(--bg3)', borderRadius:7, border:'1px solid var(--border)' }}>
-                  <span style={{ fontSize:11, color:'var(--muted2)' }}>📱 別タブ検出</span>
-                  <span style={{ fontSize:10, color:'#34d399', fontWeight:600 }}>常時ON</span>
+                  <span style={{ fontSize:11, color:'var(--muted2)' }}>{lang==='ja'?'📱 別タブ検出':'📱 Tab Switch'}</span>
+                  <span style={{ fontSize:10, color:'#34d399', fontWeight:600 }}>{lang==='ja'?'常時ON':'Always ON'}</span>
                 </div>
 
                 <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'6px 8px', background:'var(--bg3)', borderRadius:7, border:'1px solid var(--border)' }}>
-                  <span style={{ fontSize:11, color:'var(--muted2)' }}>😊 顔検出</span>
+                  <span style={{ fontSize:11, color:'var(--muted2)' }}>{lang==='ja'?'😊 顔検出':'😊 Face Detection'}</span>
                   <label style={{ display:'flex', alignItems:'center', gap:4, cursor: cameraOn ? 'pointer' : 'not-allowed' }}>
                     <input type="checkbox" checked={faceDetectEnabled}
                       onChange={e => setFaceDetectEnabled(e.target.checked)}
@@ -894,13 +894,13 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                         ? faceStatus === 'face_detected' ? '✅ 検出中'
                           : faceStatus === 'no_face' ? `⚠️ ${noFaceSeconds}秒`
                           : '🔍 確認中'
-                        : cameraOn ? 'OFF' : 'カメラOFF'}
+                        : cameraOn ? 'ON' : (lang==='ja'?'カメラOFF':'Cam OFF')}
                     </span>
                   </label>
                 </div>
 
                 <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'6px 8px', background:'var(--bg3)', borderRadius:7, border:`1px solid ${awayEnabled?'var(--accent)':'var(--border)'}` }}>
-                  <span style={{ fontSize:11, color:'var(--muted2)' }}>⌨️ 操作なし検出</span>
+                  <span style={{ fontSize:11, color:'var(--muted2)' }}>{lang==='ja'?'⌨️ 操作なし検出':'⌨️ Inactivity'}</span>
                   <label style={{ display:'flex', alignItems:'center', gap:4, cursor:'pointer' }}>
                     <input type="checkbox" checked={awayEnabled}
                       onChange={e => setAwayEnabled(e.target.checked)}
@@ -1386,7 +1386,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                 {['⏱','🎥','👥','📊'][i]}
                 {hasNotif && <span style={{ position:'absolute', top:-2, right:-2, width:8, height:8, borderRadius:'50%', background:'var(--accent)', border:'2px solid var(--bg2)' }}/>}
               </div>
-              <span className={styles.bnavLbl}>{['タイマー','ルーム','フレンド','統計'][i]}</span>
+              <span className={styles.bnavLbl}>{lang==='ja'?['タイマー','ルーム','フレンド','統計'][i]:['Timer','Room','Friends','Stats'][i]}</span>
             </button>
           )
         })}
