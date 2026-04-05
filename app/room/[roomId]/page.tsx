@@ -42,12 +42,13 @@ export default async function RoomPage({ params }: { params: Promise<{ roomId: s
 
   let weeklyStats: { day_of_week: number; total_seconds: number }[] = []
   try {
-    const { data } = await supabase.rpc('get_weekly_stats', { target_user_id: userId })
+    const { data } = await (supabase as any).rpc('get_weekly_stats', { target_user_id: userId })
     if (Array.isArray(data)) {
       weeklyStats = data.map((d: any) => ({ day_of_week: Number(d.day_of_week ?? 0), total_seconds: Number(d.total_seconds ?? 0) }))
     }
   } catch {}
 
+  // Also delete Archiv.zip if exists
   return (
     <RoomClient
       profile={JSON.parse(JSON.stringify(profile))}
