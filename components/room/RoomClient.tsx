@@ -9,6 +9,9 @@ import { useRoomRealtime, useMessages, useFriends } from '@/hooks/useRealtime'
 import { useInteractions } from '@/hooks/useInteractions'
 import TaskPanel from './TaskPanel'
 import MobileScreens from './MobileScreens'
+import { useFaceDetection } from '@/hooks/useFaceDetection'
+import SafetyPanel from './SafetyPanel'
+import { translations, type Lang } from '@/lib/i18n'
 import TimelineCalendar from './TimelineCalendar'
 import type { Profile, Room, RoomMember, Task, Friendship } from '@/lib/supabase/types'
 import styles from './RoomClient.module.css'
@@ -32,11 +35,18 @@ const QUOTES = [
   { text: 'できるかどうかではなく、やるかどうかだ。', author: '孫正義' },
 ]
 const BGM_TRACKS = [
-  { id: 'lofi',   name: 'Lo-fi Hip Hop',    icon: '🎹', freqs: [220,277,330,370,440] as number[], noise: null as string | null },
-  { id: 'rain',   name: '雨音 + カフェ',      icon: '🌧️', freqs: null, noise: 'rain' },
-  { id: 'nature', name: '森の環境音',          icon: '🌿', freqs: null, noise: 'nature' },
-  { id: 'cafe',   name: 'カフェの雑音',        icon: '☕', freqs: null, noise: 'cafe' },
-  { id: 'piano',  name: 'ピアノ アンビエント', icon: '🎵', freqs: [261,329,392,523] as number[], noise: null },
+  { id: 'lofi',   name: 'Lo-fi Hip Hop',    icon: '🎹', type: 'lofi' },
+  { id: 'rain',   name: '雨音',              icon: '🌧️', type: 'rain' },
+  { id: 'nature', name: '森の環境音',         icon: '🌿', type: 'nature' },
+  { id: 'cafe',   name: 'カフェの雑音',       icon: '☕', type: 'cafe' },
+  { id: 'piano',  name: 'ピアノ',            icon: '🎵', type: 'piano' },
+  { id: 'focus',  name: '集中ホワイトノイズ', icon: '🔊', type: 'white' },
+]
+const WORD_FILTERS = [
+  '死ね', 'バカ', 'アホ', 'きもい', 'うざい', '消えろ', 'クソ', 'ばか', 'あほ', 'ゴミ', 'カス',
+  'えっち', 'エッチ', 'セックス', 'チンコ', 'マンコ', 'おっぱい', 'ちんちん', 'おちんちん',
+  'ヌード', '裸', 'えろ', 'エロ', '18禁', 'アダルト',
+  'キモい', 'デブ', 'ブス', 'キショい',
 ]
 const SEAT_COLORS = ['#6c8aff','#a78bfa','#34d399','#f59e0b','#f87171','#fbbf24','#60a5fa','#fb7185','#4ade80','#facc15']
 
@@ -49,10 +59,23 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
     showToast('🍅 ポモドーロ完了！お疲れさまでした')
     addNotif('🍅', 'ポモドーロを完了しました！')
     saveStudySession()
-    supabase.rpc('update_streak')
+    (supabase as any).rpc('update_streak')
   })
   const [cameraOn, setCameraOn] = useState(false)
   const { localStream, remoteStreams } = useWebRTC(room.id, profile.id, cameraOn)
+
+  // ── Face detection ──
+  const [faceDetectEnabled, setFaceDetectEnabled] = useState(false)
+  const [noFaceThreshold, setNoFaceThreshold] = useState(120) // 秒
+  const { faceStatus, noFaceSeconds } = useFaceDetection(
+    localStream,
+    cameraOn && faceDetectEnabled,
+    () => {
+      showToast(T.faceWarning)
+      addNotif('😴', '顔が検出されませんでした')
+    },
+    noFaceThreshold
+  )
   const { members, updateStatus } = useRoomRealtime(room.id, profile.id)
   const displayMembers = members.length > 0 ? members : initialMembers
   const { friends, pendingIn, unreadCounts, blockUser, reportUser, acceptFriendRequest } = useFriends(profile.id)
@@ -103,7 +126,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
   const chatEndRef = useRef<HTMLDivElement>(null)
 
   // ── UI ──
-  const [activeTab, setActiveTab] = useState<'stats' | 'bgm' | 'activity' | 'schedule'>('stats')
+  const [activeTab, setActiveTab] = useState<'stats' | 'bgm' | 'activity' | 'schedule' | 'safety'>('stats')
   const [activeMobScreen, setActiveMobScreen] = useState<'timer' | 'room' | 'friends' | 'stats'>('timer')
   const [notifications, setNotifications] = useState([{ icon: '🏠', text: `「${room.name}」に入室しました`, time: 'たった今' }])
   const [bgmPlaying, setBgmPlaying] = useState<string | null>(null)
@@ -116,7 +139,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
   const [toast, setToast] = useState<string | null>(null)
   const [awayModal, setAwayModal] = useState(false)
   const [awayCountdown, setAwayCountdown] = useState(60)
-  const [awayEnabled, setAwayEnabled] = useState(true)
+  const [awayEnabled, setAwayEnabled] = useState(false)
   const [awayMinutes, setAwayMinutes] = useState(5)
   const [onlineCount, setOnlineCount] = useState(247)
   const [currentTime, setCurrentTime] = useState('')
@@ -143,8 +166,8 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
   useEffect(() => {
     const reset = () => { lastActivityRef.current = Date.now(); if (awayModal) dismissAway() }
     const events = ['mousemove','keydown','click','touchstart','scroll']
-    events.forEach(e => window.addEventListener(e, reset, { passive: true }))
-    return () => events.forEach(e => window.removeEventListener(e, reset))
+    events.forEach((e: any) => window.addEventListener(e, reset, { passive: true }))
+    return () => events.forEach((e: any) => window.removeEventListener(e, reset))
   }, [awayModal])
   useEffect(() => {
     const t = setInterval(() => {
@@ -179,8 +202,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
 
   async function fetchSessions() {
     const supa = supabase as any
-    const { data, error } = await supa
-      .from('scheduled_sessions')
+    const { data, error } = await supa.from('scheduled_sessions')
       .select('id, title, scheduled_at, subject, host_id, duration_mins, room_id')
       .eq('host_id', profile.id)
       .gte('scheduled_at', new Date(Date.now() - 24*60*60*1000).toISOString())
@@ -188,16 +210,14 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
       .limit(20)
     if (error) { console.error('fetchSessions error:', error); return }
 
-    const { data: myParticipations } = await supa
-      .from('session_participants')
+    const { data: myParticipations } = await supa.from('session_participants')
       .select('session_id')
       .eq('user_id', profile.id)
 
     let allData: any[] = data || []
     if (myParticipations && myParticipations.length > 0) {
       const participatedIds = myParticipations.map((p: any) => p.session_id)
-      const { data: partSessions } = await supa
-        .from('scheduled_sessions')
+      const { data: partSessions } = await supa.from('scheduled_sessions')
         .select('id, title, scheduled_at, subject, host_id, duration_mins, room_id')
         .in('id', participatedIds)
         .gte('scheduled_at', new Date(Date.now() - 24*60*60*1000).toISOString())
@@ -211,8 +231,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
 
     if (allData) {
       const hostIds = [...new Set(allData.map((s: any) => s.host_id))]
-      const { data: profiles } = await supa
-        .from('profiles')
+      const { data: profiles } = await supa.from('profiles')
         .select('id, display_name')
         .in('id', hostIds.length > 0 ? hostIds : ['none'])
       const profileMap: Record<string, string> = {}
@@ -226,14 +245,13 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
 
   async function fetchMonthStats() {
     const start = new Date(); start.setDate(1); start.setHours(0,0,0,0)
-    const { data } = await supabase
-      .from('study_sessions')
+    const { data } = await (supabase as any).from('study_sessions')
       .select('started_at, duration_seconds')
       .eq('user_id', profile.id)
       .gte('started_at', start.toISOString())
     if (data) {
       const byDay: Record<number, number> = {}
-      data.forEach(s => {
+      data.forEach((s: any) => {
         const d = new Date(s.started_at).getDate()
         byDay[d] = (byDay[d] || 0) + (s.duration_seconds || 0)
       })
@@ -265,32 +283,32 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
   }
 
   async function addTask(title: string) {
-    const { data } = await supabase.from('tasks').insert({ user_id: profile.id, title }).select().single()
+    const { data } = await (supabase as any).from('tasks').insert({ user_id: profile.id, title }).select().single()
     if (data) { setTasks(prev => [data, ...prev]); setCurrentTask(data.title) }
   }
   async function completeTask(task: Task) {
-    await supabase.from('tasks').update({ completed: true, completed_at: new Date().toISOString() }).eq('id', task.id)
-    setTasks(prev => prev.filter(t => t.id !== task.id))
+    await (supabase as any).from('tasks').update({ completed: true, completed_at: new Date().toISOString() }).eq('id', task.id)
+    setTasks(prev => prev.filter((t: any) => t.id !== task.id))
     setTasksDoneToday(n => n + 1); addNotif('✅', `「${task.title}」を完了`)
   }
   async function deleteTask(taskId: string) {
-    await supabase.from('tasks').delete().eq('id', taskId)
-    setTasks(prev => prev.filter(t => t.id !== taskId))
+    await (supabase as any).from('tasks').delete().eq('id', taskId)
+    setTasks(prev => prev.filter((t: any) => t.id !== taskId))
   }
   async function saveStudySession() {
-    await supabase.from('study_sessions').insert({
+    await (supabase as any).from('study_sessions').insert({
       user_id: profile.id, room_id: room.id,
       started_at: sessionStartRef.current, ended_at: new Date().toISOString(),
       duration_seconds: timer.customFocusMins * 60 || 25 * 60, pomodoros_completed: 1,
     })
-    await supabase.from('profiles').update({ total_study_seconds: todaySeconds }).eq('id', profile.id)
+    await (supabase as any).from('profiles').update({ total_study_seconds: todaySeconds }).eq('id', profile.id)
     setPomosToday(p => p + 1); setStreak(s => s + 1)
     sessionStartRef.current = new Date().toISOString()
   }
   async function changeSubject(s: string) {
     setMySubject(s); setShowSubjectPicker(false)
-    await supabase.rpc('update_subject', { p_subject: s })
-    await supabase.from('room_members').update({ current_task: s }).eq('room_id', room.id).eq('user_id', profile.id)
+    await (supabase as any).rpc('update_subject', { p_subject: s })
+    await (supabase as any).from('room_members').update({ current_task: s }).eq('room_id', room.id).eq('user_id', profile.id)
     addNotif('🎯', `科目を「${s}」に設定しました`)
   }
   async function scheduleSession() {
@@ -301,7 +319,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
 
     // 専用プライベートルームを自動作成
     const inviteCode = Math.random().toString(36).slice(2, 10).toUpperCase()
-    const { data: privateRoom } = await supabase.from('rooms').insert({
+    const { data: privateRoom } = await (supabase as any).from('rooms').insert({
       name: schedTitle,
       description: `${profile.display_name}さんのセッション · ${schedDuration}分`,
       emoji: '🔒',
@@ -357,27 +375,126 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
       await bgmCtxRef.current.resume()
     }
   }
-  function stopBgmNodes() { bgmNodesRef.current.forEach(n => { try { (n as OscillatorNode).stop?.(); n.disconnect() } catch {} }); bgmNodesRef.current = [] }
+  function stopBgmNodes() { bgmNodesRef.current.forEach((n: any) => { try { (n as OscillatorNode).stop?.(); n.disconnect() } catch {} }); bgmNodesRef.current = [] }
+  function makeNoise(ctx: AudioContext, gainNode: GainNode, type: 'rain'|'nature'|'cafe'|'white') {
+    const bufSize = ctx.sampleRate * 3
+    const buf = ctx.createBuffer(2, bufSize, ctx.sampleRate)
+    for (let ch = 0; ch < 2; ch++) {
+      const d = buf.getChannelData(ch)
+      for (let i = 0; i < bufSize; i++) d[i] = (Math.random() * 2 - 1)
+    }
+    const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true
+    const flt = ctx.createBiquadFilter()
+    if (type === 'rain') { flt.type = 'bandpass'; flt.frequency.value = 400; flt.Q.value = 0.5 }
+    else if (type === 'nature') { flt.type = 'lowpass'; flt.frequency.value = 800 }
+    else if (type === 'cafe') { flt.type = 'lowpass'; flt.frequency.value = 1200 }
+    else { flt.type = 'lowpass'; flt.frequency.value = 3000 }
+    const g = ctx.createGain(); g.gain.value = type === 'white' ? 0.15 : 0.25
+    src.connect(flt); flt.connect(g); g.connect(gainNode); src.start()
+    bgmNodesRef.current.push(src, flt, g)
+  }
+
+  function scheduleLofi(ctx: AudioContext, gainNode: GainNode) {
+    // Lo-fi chord progression: Cmaj7 - Am7 - Fmaj7 - G7
+    const chords = [
+      [261.63, 329.63, 392.00, 493.88], // Cmaj7
+      [220.00, 261.63, 329.63, 440.00], // Am7
+      [174.61, 220.00, 261.63, 349.23], // Fmaj7
+      [196.00, 246.94, 293.66, 391.99], // G7
+    ]
+    const bpm = 75; const beatLen = 60 / bpm
+    let time = ctx.currentTime + 0.1
+    const loop = () => {
+      chords.forEach(chord => {
+        chord.forEach((freq, i) => {
+          const osc = ctx.createOscillator()
+          const g = ctx.createGain()
+          osc.type = i === 0 ? 'sawtooth' : 'sine'
+          osc.frequency.value = freq * (i === 0 ? 0.5 : 1)
+          // Slight detune for warmth
+          osc.detune.value = (Math.random() - 0.5) * 8
+          g.gain.setValueAtTime(0, time)
+          g.gain.linearRampToValueAtTime(0.04, time + 0.05)
+          g.gain.exponentialRampToValueAtTime(0.001, time + beatLen * 4 - 0.1)
+          osc.connect(g); g.connect(gainNode); osc.start(time); osc.stop(time + beatLen * 4)
+        })
+        time += beatLen * 4
+      })
+    }
+    loop()
+    // Schedule next loop
+    const intervalMs = beatLen * 4 * chords.length * 1000
+    const timer = setInterval(() => {
+      if (!bgmCtxRef.current) { clearInterval(timer); return }
+      loop()
+    }, intervalMs)
+    bgmNodesRef.current.push({ disconnect: () => clearInterval(timer) } as any)
+  }
+
+  function schedulePiano(ctx: AudioContext, gainNode: GainNode) {
+    const notes = [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88, 523.25]
+    const bpm = 60; const beatLen = 60 / bpm
+    let time = ctx.currentTime + 0.1
+    const playNote = () => {
+      const freq = notes[Math.floor(Math.random() * notes.length)]
+      const osc = ctx.createOscillator()
+      const g = ctx.createGain()
+      osc.type = 'sine'
+      osc.frequency.value = freq * (Math.random() > 0.5 ? 1 : 2)
+      g.gain.setValueAtTime(0, time)
+      g.gain.linearRampToValueAtTime(0.06, time + 0.02)
+      g.gain.exponentialRampToValueAtTime(0.001, time + beatLen * 2)
+      osc.connect(g); g.connect(gainNode); osc.start(time); osc.stop(time + beatLen * 2)
+      time += beatLen * (Math.random() > 0.6 ? 1 : 2)
+    }
+    for (let i = 0; i < 8; i++) playNote()
+    const timer = setInterval(() => {
+      if (!bgmCtxRef.current) { clearInterval(timer); return }
+      const now = ctx.currentTime
+      time = now + 0.1
+      for (let i = 0; i < 8; i++) playNote()
+    }, beatLen * 8 * 1000)
+    bgmNodesRef.current.push({ disconnect: () => clearInterval(timer) } as any)
+  }
+
   async function playBgm(id: string) {
     await initAudio(); stopBgmNodes()
     const ctx = bgmCtxRef.current!; const gain = bgmGainRef.current!
-    const track = BGM_TRACKS.find(t => t.id === id)!
-    if (track.freqs) {
-      track.freqs.forEach((f, i) => {
-        const osc = ctx.createOscillator(); const g = ctx.createGain()
-        osc.type = i % 2 === 0 ? 'sine' : 'triangle'; osc.frequency.value = f; g.gain.value = 0.07 / track.freqs!.length
-        osc.connect(g); g.connect(gain); osc.start(); bgmNodesRef.current.push(osc, g)
-      })
+    const track = BGM_TRACKS.find((t: any) => t.id === id)!
+    const type = (track as any).type
+
+    if (type === 'lofi') {
+      scheduleLofi(ctx, gain)
+      makeNoise(ctx, gain, 'cafe')
+    } else if (type === 'piano') {
+      schedulePiano(ctx, gain)
+    } else if (type === 'rain') {
+      makeNoise(ctx, gain, 'rain')
+      // Add subtle thunder-like low rumble
+      const lfo = ctx.createOscillator(); const lfoGain = ctx.createGain()
+      lfo.frequency.value = 0.1; lfoGain.gain.value = 0.05
+      lfo.connect(lfoGain); lfoGain.connect(gain); lfo.start()
+      bgmNodesRef.current.push(lfo, lfoGain)
+    } else if (type === 'nature') {
+      makeNoise(ctx, gain, 'nature')
+      // Add chirping birds effect
+      const birdInterval = setInterval(() => {
+        if (!bgmCtxRef.current) { clearInterval(birdInterval); return }
+        const o = ctx.createOscillator(); const g = ctx.createGain()
+        o.frequency.value = 2000 + Math.random() * 1000
+        o.type = 'sine'
+        const t = ctx.currentTime
+        g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.03, t + 0.05)
+        g.gain.exponentialRampToValueAtTime(0.001, t + 0.3)
+        o.connect(g); g.connect(gain); o.start(t); o.stop(t + 0.3)
+      }, 800 + Math.random() * 2000)
+      bgmNodesRef.current.push({ disconnect: () => clearInterval(birdInterval) } as any)
+    } else if (type === 'cafe') {
+      makeNoise(ctx, gain, 'cafe')
     } else {
-      const buf = ctx.sampleRate * 2; const b = ctx.createBuffer(1, buf, ctx.sampleRate); const d = b.getChannelData(0)
-      for (let i = 0; i < buf; i++) d[i] = (Math.random() * 2 - 1) * 0.3
-      const src = ctx.createBufferSource(); src.buffer = b; src.loop = true
-      const flt = ctx.createBiquadFilter()
-      flt.type = track.noise === 'rain' ? 'highpass' : track.noise === 'nature' ? 'bandpass' : 'lowpass'
-      flt.frequency.value = track.noise === 'rain' ? 700 : track.noise === 'nature' ? 350 : 500
-      src.connect(flt); flt.connect(gain); src.start(); bgmNodesRef.current.push(src, flt)
+      makeNoise(ctx, gain, 'white')
     }
-    setBgmPlaying(id); addNotif('🎵', `BGM「${track.name}」を再生中`)
+    setBgmPlaying(id); addNotif('🎵', `BGM「${(track as any).name}」を再生中`)
   }
   function toggleBgm(id: string) { if (bgmPlaying === id) { stopBgmNodes(); setBgmPlaying(null) } else { playBgm(id) } }
 
@@ -392,6 +509,8 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
   }
   async function handleSendMsg() {
     if (!chatInput.trim() || !chatFriendId) return
+    const hasNG = WORD_FILTERS.some(w => chatInput.includes(w))
+    if (hasNG) { showToast(T.badWord); return }
     await sendMessage(chatInput.trim()); setChatInput('')
   }
 
@@ -404,15 +523,15 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
 
   const weekDays = ['日','月','火','水','木','金','土']
   const weekDataMap: Record<number,number> = {}
-  weeklyStats.forEach(d => { weekDataMap[d.day_of_week] = Number(d.total_seconds) })
+  weeklyStats.forEach((d: any) => { weekDataMap[d.day_of_week] = Number(d.total_seconds) })
   const maxWeek = Math.max(...Object.values(weekDataMap), 3600)
   const today = new Date().getDay()
 
-  const chatFriend = displayFriends.find(f => f.addressee_id === chatFriendId)
+  const chatFriend = displayFriends.find((f: any) => f.addressee_id === chatFriendId)
   const chatFriendProfile = chatFriend?.profiles as Profile | undefined
-  const friendsForTaskPanel = displayFriends.map(f => ({ id: f.addressee_id, display_name: (f.profiles as Profile).display_name, avatar_url: (f.profiles as Profile).avatar_url }))
+  const friendsForTaskPanel = displayFriends.map((f: any) => ({ id: f.addressee_id, display_name: (f.profiles as Profile).display_name, avatar_url: (f.profiles as Profile).avatar_url }))
 
-  const filteredMembers = displayMembers.filter(m => m.user_id !== profile.id && (!showPinnedFilter || pinnedUserIds.includes(m.user_id)))
+  const filteredMembers = displayMembers.filter((m: any) => m.user_id !== profile.id && (!showPinnedFilter || pinnedUserIds.includes(m.user_id)))
   const allSeats = 20
   const emptySeats = Math.max(0, allSeats - displayMembers.length)
   const seatRows = ['A','B','C','D','E']
@@ -460,7 +579,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
             <h3>📢 ユーザーを報告</h3>
             <p>「{reportModal.name}」を報告する理由：</p>
             <div className={styles.reportBtns}>
-              {['迷惑行為・荒らし','不適切なカメラ映像','スパム','その他'].map(reason => (
+              {['迷惑行為・荒らし','不適切なカメラ映像','スパム','その他'].map((reason: any) => (
                 <button key={reason} className={`${styles.mBtn} ${styles.ghost}`}
                   onClick={() => handleReport(reportModal.userId, reason)}>{reason}</button>
               ))}
@@ -479,7 +598,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
             <h3>リアクションを送る</h3>
             <p>「{reactionTarget.name}」さんへ</p>
             <div style={{ display:'flex', gap:10, flexWrap:'wrap', justifyContent:'center', margin:'16px 0' }}>
-              {REACTION_EMOJIS.map(emoji => (
+              {REACTION_EMOJIS.map((emoji: any) => (
                 <button key={emoji} style={{ fontSize:28, padding:'8px 12px', background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:10, cursor:'pointer' }}
                   onClick={async () => {
                     const result = await sendReaction(reactionTarget.userId, emoji)
@@ -575,7 +694,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
           <div className={styles.modal} onClick={e => e.stopPropagation()}>
             <h3>🎯 勉強科目を選択</h3>
             <div style={{ display:'flex', flexWrap:'wrap', gap:8, margin:'16px 0' }}>
-              {SUBJECTS.map(s => (
+              {SUBJECTS.map((s: any) => (
                 <button key={s}
                   style={{ padding:'6px 14px', borderRadius:20, border:`1px solid ${mySubject===s?'var(--accent)':'var(--border)'}`, background:mySubject===s?'rgba(108,138,255,.15)':'var(--bg3)', color:mySubject===s?'var(--accent)':'var(--muted2)', fontSize:13, cursor:'pointer', fontFamily:'inherit', transition:'.15s' }}
                   onClick={() => changeSubject(s)}>{s}</button>
@@ -596,10 +715,14 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
         </div>
         <div className={styles.headerRight}>
           <div className={styles.clock}>{currentTime}</div>
+          <button onClick={toggleLang}
+            style={{ padding:'4px 10px', background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:6, color:'var(--muted2)', fontSize:11, cursor:'pointer', fontFamily:'inherit', fontWeight:600 }}>
+            {lang === 'ja' ? '🇬🇧 EN' : '🇯🇵 JP'}
+          </button>
           <div className={styles.avatarBtn}>
             {profile.avatar_url ? <img src={profile.avatar_url} alt="" width={32} height={32} style={{ borderRadius:'50%', objectFit:'cover' }}/> : profile.display_name[0]}
           </div>
-          <button className={styles.signOutBtn} onClick={() => signOut({ callbackUrl:'/' })}>ログアウト</button>
+          <button className={styles.signOutBtn} onClick={() => signOut({ callbackUrl:'/' })}>{T.logout}</button>
         </div>
       </header>
 
@@ -648,7 +771,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                 <button className={styles.btnReset} onClick={timer.reset}>↺</button>
               </div>
               <div className={styles.pomoDots}>
-                {[0,1,2,3].map(i => <div key={i} className={`${styles.pdot} ${i<(timer.pomosCompleted%4)?styles.pdotDone:''}`}/>)}
+                {[0,1,2,3].map((i: any) => <div key={i} className={`${styles.pdot} ${i<(timer.pomosCompleted%4)?styles.pdotDone:''}`}/>)}
               </div>
             </div>
 
@@ -672,7 +795,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
             <div>
               <div className={styles.secLabel}>👥 フレンド</div>
               <div className={styles.friendList}>
-                {displayFriends.map(f => {
+                {displayFriends.map((f: any) => {
                   const fp = f.profiles as Profile
                   const unread = unreadCounts[f.addressee_id] || 0
                   return (
@@ -692,7 +815,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                     </div>
                   )
                 })}
-                {displayFriends.length===0&&<div style={{ fontSize:11, color:'var(--muted)', textAlign:'center', padding:'12px 0' }}>まだフレンドがいません</div>}
+                {displayFriends.length===0&&<div style={{ fontSize:11, color:'var(--muted)', textAlign:'center', padding:'12px 0' }}>{T.noFriends}</div>}
               </div>
             </div>
 
@@ -725,25 +848,25 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
             <button className={`${styles.ctrlBtn} ${cameraOn?styles.ctrlBtnActive:''}`} onClick={() => setCameraOn(v => !v)}>
               📷 {cameraOn?'カメラON':'カメラOFF'}
             </button>
-            <div className={styles.micBadge}>🔇 マイク禁止</div>
-            <div className={styles.ctrlInfo}>トークは禁止。チャットでコミュニケーションを。</div>
+            <div className={styles.micBadge}>{T.micBanned}</div>
+            <div className={styles.ctrlInfo}>{T.noTalk}</div>
             <button className={`${styles.ctrlBtn} ${styles.ctrlBtnDanger}`} onClick={async () => {
                 // Leave room_members first
                 const supa = createClient()
-                await supa.from('room_members').delete().eq('room_id', room.id).eq('user_id', profile.id)
+                await supa as any).from('room_members').delete().eq('room_id', room.id).eq('user_id', profile.id)
                 router.push('/')
-              }}>退室</button>
+              }}>{T.leaveRoom}</button>
           </div>
 
           {/* Focus bar */}
           <div className={styles.focusBar}>
             <div>
-              <div className={styles.focusLbl}>現在の集中タスク</div>
+              <div className={styles.focusLbl}>{T.currentTask}</div>
               <div className={styles.focusTask}>{currentTask}</div>
             </div>
             <div style={{ display:'flex', gap:8, alignItems:'center' }}>
               {mySubject && <div style={{ padding:'3px 10px', background:'rgba(108,138,255,.1)', border:'1px solid rgba(108,138,255,.2)', borderRadius:12, fontSize:11, color:'var(--accent)' }}>{mySubject}</div>}
-              <div className={styles.sessionBadge}>セッション {timer.sessionCount} / 4</div>
+              <div className={styles.sessionBadge}>{T.session} {timer.sessionCount} / 4</div>
             </div>
           </div>
 
@@ -754,7 +877,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
               onKeyDown={e => e.key==='Enter' && saveDailyMessage(dailyMsgInput)}
               style={{ flex:1, padding:'8px 12px', background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:8, color:'var(--text)', fontSize:12, fontFamily:'inherit', outline:'none' }}/>
             <button onClick={() => { saveDailyMessage(dailyMsgInput); setDailyMsgInput('') }}
-              style={{ padding:'8px 14px', background:'var(--accent)', border:'none', borderRadius:8, color:'#fff', fontSize:12, cursor:'pointer', fontFamily:'inherit' }}>投稿</button>
+              style={{ padding:'8px 14px', background:'var(--accent)', border:'none', borderRadius:8, color:'#fff', fontSize:12, cursor:'pointer', fontFamily:'inherit' }}>{T.post}</button>
           </div>
 
           {/* Classroom */}
@@ -775,7 +898,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
               <div className={styles.secLabel} style={{ marginBottom:0 }}>🎓 自習ルーム ({displayMembers.length}人)</div>
               <button onClick={() => setShowPinnedFilter(v => !v)}
                 style={{ display:'flex', alignItems:'center', gap:5, padding:'4px 10px', background:showPinnedFilter?'rgba(108,138,255,.15)':'var(--bg3)', border:`1px solid ${showPinnedFilter?'var(--accent)':'var(--border)'}`, borderRadius:6, color:showPinnedFilter?'var(--accent)':'var(--muted)', fontSize:11, cursor:'pointer', fontFamily:'inherit', transition:'.2s' }}>
-                📌 {showPinnedFilter?'ピンのみ表示':'ピンのみ'}
+                📌 {showPinnedFilter?'ピンのみ表示':T.pinnedOnly}
               </button>
             </div>
 
@@ -801,11 +924,11 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                     title="あなたはピンリストに常に表示されます">📌自</button>
                 </div>
                 {mySubject && <div style={{ textAlign:'center' }}><span style={{ display:'inline-block', padding:'1px 5px', borderRadius:3, fontSize:8, fontWeight:600, background:'rgba(108,138,255,.15)', color:'var(--accent)', marginTop:2 }}>{mySubject}</span></div>}
-                {(() => { const dm = dailyMessages.find(d => d.user_id === profile.id); return dm ? <div style={{ background:'#0a1520', borderLeft:'2px solid var(--accent)', borderRadius:'0 4px 4px 0', padding:'2px 5px', fontSize:8, color:'#64748b', marginTop:3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{dm.content}</div> : null })()}
+                {(() => { const dm = dailyMessages.find((d: any) => d.user_id === profile.id); return dm ? <div style={{ background:'#0a1520', borderLeft:'2px solid var(--accent)', borderRadius:'0 4px 4px 0', padding:'2px 5px', fontSize:8, color:'#64748b', marginTop:3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{dm.content}</div> : null })()}
               </div>
 
               {/* Other members */}
-              {(showPinnedFilter ? displayMembers.filter(m => m.user_id !== profile.id && pinnedUserIds.includes(m.user_id)) : displayMembers.filter(m => m.user_id !== profile.id))
+              {(showPinnedFilter ? displayMembers.filter((m: any) => m.user_id !== profile.id && pinnedUserIds.includes(m.user_id)) : displayMembers.filter((m: any) => m.user_id !== profile.id))
                 .map((m, idx) => {
                   const rs = remoteStreams.get(m.user_id)
                   const mp = m.profiles as { display_name: string; avatar_url: string | null }
@@ -814,7 +937,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                   const color = SEAT_COLORS[(idx + 1) % SEAT_COLORS.length]
                   const seatNum = `${seatRows[Math.floor((idx + 1) / 4)]}${(idx + 1) % 4 + 1}`
                   const rxs = getReactionsFor(m.user_id)
-                  const dm = dailyMessages.find(d => d.user_id === m.user_id)
+                  const dm = dailyMessages.find((d: any) => d.user_id === m.user_id)
                   const memberSubject = m.current_task
                   return (
                     <div key={m.id} style={{ background:'var(--bg2)', border:`1px solid ${isPinnedUser?'#a78bfa':isAway?'#f59e0b':'var(--border)'}`, borderRadius:12, padding:'10px 8px', position:'relative', cursor:'default', transition:'.2s' }}
@@ -852,7 +975,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                     <div style={{ background:'#0d0f16', borderRadius:8, height:52, display:'flex', alignItems:'center', justifyContent:'center', marginBottom:6 }}>
                       <span style={{ color:'#2a2e3d', fontSize:20 }}>+</span>
                     </div>
-                    <div style={{ fontSize:10, color:'#2a2e3d', textAlign:'center' }}>空席</div>
+                    <div style={{ fontSize:10, color:'#2a2e3d', textAlign:'center' }}>{T.emptyseat}</div>
                   </div>
                 )
               })}
@@ -863,7 +986,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
           <div>
             <div className={styles.secLabel} style={{ marginBottom:10 }}>🏠 ルーム一覧</div>
             <div className={styles.roomsGrid}>
-              {allRooms.map(r => (
+              {allRooms.map((r: any) => (
                 <div key={r.id} className={`${styles.roomCard} ${r.id===room.id?styles.roomCardActive:''}`} onClick={() => router.push(`/room/${r.id}`)}>
                   <div className={styles.roomName}>{r.emoji} {r.name}</div>
                   <div className={styles.roomDesc}>{r.description}</div>
@@ -890,7 +1013,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                 <button className={styles.chatClose} onClick={() => setChatFriendId(null)}>✕</button>
               </div>
               <div className={styles.chatMsgs}>
-                {chatMessages.map(msg => (
+                {chatMessages.map((msg: any) => (
                   <div key={msg.id} className={`${styles.msg} ${msg.sender_id===profile.id?styles.msgMe:styles.msgThem}`}>
                     <div className={styles.msgBubble}>{msg.content}</div>
                     <div className={styles.msgTime}>{new Date(msg.created_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</div>
@@ -899,16 +1022,16 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                 <div ref={chatEndRef}/>
               </div>
               <div className={styles.chatInputRow}>
-                <input className={styles.chatInput} value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => e.key==='Enter'&&handleSendMsg()} placeholder="メッセージ..."/>
-                <button className={styles.chatSend} onClick={handleSendMsg}>送信</button>
+                <input className={styles.chatInput} value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => e.key==='Enter'&&handleSendMsg()} placeholder={T.messagePlaceholder}/>
+                <button className={styles.chatSend} onClick={handleSendMsg}>{T.send}</button>
               </div>
             </div>
           ) : (
             <>
               <div className={styles.srTabs}>
-                {(['stats','bgm','activity','schedule'] as const).map((tab,i) => (
+                {(['stats','bgm','activity','schedule','safety'] as const).map((tab,i) => (
                   <button key={tab} className={`${styles.srTab} ${activeTab===tab?styles.srTabActive:''}`} onClick={() => setActiveTab(tab)}>
-                    {['📊','🎵','🔔','📅'][i]}
+                    {['📊','🎵','🔔','📅','🛡️'][i]}
                   </button>
                 ))}
               </div>
@@ -917,12 +1040,12 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                 {activeTab==='stats' && (
                   <>
                     <div>
-                      <div className={styles.secLabel}>本日</div>
+                      <div className={styles.secLabel}>{T.today}</div>
                       <div className={styles.statCards}>
-                        <div className={styles.statCard}><div className={styles.statVal}>{fmtStudyTime(todaySeconds)}</div><div className={styles.statSub}>合計勉強時間</div></div>
-                        <div className={styles.statCard}><div className={styles.statVal}>{pomosToday}</div><div className={styles.statSub}>ポモドーロ</div></div>
-                        <div className={styles.statCard}><div className={styles.statVal}>{streak}🔥</div><div className={styles.statSub}>連続日数</div></div>
-                        <div className={styles.statCard}><div className={styles.statVal}>{tasksDoneToday}</div><div className={styles.statSub}>タスク完了</div></div>
+                        <div className={styles.statCard}><div className={styles.statVal}>{fmtStudyTime(todaySeconds)}</div><div className={styles.statSub}>{T.totalStudy}</div></div>
+                        <div className={styles.statCard}><div className={styles.statVal}>{pomosToday}</div><div className={styles.statSub}>{T.pomodoros}</div></div>
+                        <div className={styles.statCard}><div className={styles.statVal}>{streak}🔥</div><div className={styles.statSub}>{T.streak}</div></div>
+                        <div className={styles.statCard}><div className={styles.statVal}>{tasksDoneToday}</div><div className={styles.statSub}>{T.tasksDone}</div></div>
                       </div>
                     </div>
                     <div>
@@ -948,8 +1071,8 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                         </div>
                       ) : (
                         <div style={{ display:'flex', alignItems:'flex-end', gap:2, height:56 }}>
-                          {monthStats.map(d => {
-                            const max = Math.max(...monthStats.map(s => s.total_seconds), 3600)
+                          {monthStats.map((d: any) => {
+                            const max = Math.max(...monthStats.map((s: any) => s.total_seconds), 3600)
                             const h = Math.max((d.total_seconds/max)*100, 3)
                             return (
                               <div key={d.day} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:2, height:'100%', justifyContent:'flex-end' }}>
@@ -963,7 +1086,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                       )}
                     </div>
                     <div>
-                      <div className={styles.secLabel}>今日の言葉</div>
+                      <div className={styles.secLabel}>{T.quote}</div>
                       <div className={styles.quoteBox}>「{quote.text}」<div className={styles.quoteAuthor}>— {quote.author}</div></div>
                     </div>
                   </>
@@ -972,7 +1095,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                 {activeTab==='bgm' && (
                   <>
                     <div className={styles.bgmList}>
-                      {BGM_TRACKS.map(t => (
+                      {BGM_TRACKS.map((t: any) => (
                         <div key={t.id} className={`${styles.bgmItem} ${bgmPlaying===t.id?styles.bgmPlaying:''}`} onClick={() => toggleBgm(t.id)}>
                           <span>{t.icon}</span>
                           <span style={{ flex:1, color:'var(--muted2)', fontSize:12 }}>{t.name}</span>
@@ -1000,6 +1123,23 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                   </div>
                 )}
 
+                {activeTab==='safety' && (
+                  <SafetyPanel
+                    userId={profile.id}
+                    cameraOn={cameraOn}
+                    faceDetectEnabled={faceDetectEnabled}
+                    noFaceThreshold={noFaceThreshold}
+                    awayEnabled={awayEnabled}
+                    awayMinutes={awayMinutes}
+                    faceStatus={faceStatus}
+                    noFaceSeconds={noFaceSeconds}
+                    onFaceDetectChange={setFaceDetectEnabled}
+                    onNoFaceThresholdChange={setNoFaceThreshold}
+                    onAwayEnabledChange={setAwayEnabled}
+                    onAwayMinutesChange={setAwayMinutes}
+                  />
+                )}
+
                 {activeTab==='schedule' && (
                   <>
                     <button onClick={() => setShowScheduler(true)} style={{ width:'100%', padding:'9px', background:'var(--accent)', border:'none', borderRadius:8, color:'#fff', fontSize:12, cursor:'pointer', fontFamily:'inherit', marginBottom:10 }}>
@@ -1011,12 +1151,11 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                       tasks={tasks}
                       scheduledSessions={scheduledSessions}
                       onJoinSession={async (s) => {
-                        const { data: sess } = await (supabase as any)
-                          .from('scheduled_sessions')
+                        const { data: sess } = await (supabase as any).from('scheduled_sessions')
                           .select('room_id')
                           .eq('id', s.id)
                           .single()
-                        if (sess?.room_id) {
+                        if ((sess as any)?.room_id) {
                           await (supabase as any).from('session_participants').upsert(
                             { session_id: s.id, user_id: profile.id },
                             { onConflict: 'session_id,user_id' }
@@ -1026,8 +1165,8 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                       }}
                     />
                     {scheduledSessions.length===0 ? (
-                      <div style={{ fontSize:12, color:'var(--muted)', textAlign:'center', padding:'20px 0' }}>予約中のセッションはありません</div>
-                    ) : scheduledSessions.map(s => {
+                      <div style={{ fontSize:12, color:'var(--muted)', textAlign:'center', padding:'20px 0' }}>{T.noSessions}</div>
+                    ) : scheduledSessions.map((s: any) => {
                       const nowT = new Date()
                       const startT = new Date(s.scheduled_at)
                       const diffMin = Math.round((startT.getTime() - nowT.getTime()) / 60000)
@@ -1063,14 +1202,13 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                             {(isStarting || isSoon) && (
                               <button onClick={async () => {
                                 // Get the session's private room and navigate there
-                                const { data: sess } = await supabase
-                                  .from('scheduled_sessions')
+                                const { data: sess } = await (supabase as any).from('scheduled_sessions')
                                   .select('room_id')
                                   .eq('id', s.id)
                                   .single()
-                                if (sess?.room_id) {
+                                if ((sess as any)?.room_id) {
                                   // Join as participant first
-                                  await supabase.from('session_participants').upsert(
+                                  await (supabase as any).from('session_participants').upsert(
                                     { session_id: s.id, user_id: profile.id },
                                     { onConflict: 'session_id,user_id' }
                                   )
@@ -1085,7 +1223,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                             )}
                             {s.host_id === profile.id && (
                               <button onClick={async () => {
-                                await supabase.from('scheduled_sessions').delete().eq('id', s.id)
+                                await (supabase as any).from('scheduled_sessions').delete().eq('id', s.id)
                                 fetchSessions()
                                 showToast('🗑 予約を削除しました')
                               }}
@@ -1141,7 +1279,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
             </div>
           </div>
           <div className={styles.mobChatMsgs}>
-            {chatMessages.map(msg => (
+            {chatMessages.map((msg: any) => (
               <div key={msg.id} className={`${styles.msg} ${msg.sender_id===profile.id?styles.msgMe:styles.msgThem}`}>
                 <div className={styles.msgBubble}>{msg.content}</div>
                 <div className={styles.msgTime}>{new Date(msg.created_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</div>
@@ -1150,8 +1288,8 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
             <div ref={chatEndRef}/>
           </div>
           <div className={styles.mobChatInputRow}>
-            <input className={styles.chatInput} value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => e.key==='Enter'&&handleSendMsg()} placeholder="メッセージ..."/>
-            <button className={styles.chatSend} onClick={handleSendMsg}>送信</button>
+            <input className={styles.chatInput} value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => e.key==='Enter'&&handleSendMsg()} placeholder={T.messagePlaceholder}/>
+            <button className={styles.chatSend} onClick={handleSendMsg}>{T.send}</button>
           </div>
         </div>
       )}

@@ -35,22 +35,22 @@ export function useTaskSharing(userId: string, roomId: string) {
   const fetchSharedTasks = useCallback(async () => {
     // 自分のフレンドIDを取得
     const { data: friendships } = await supabase
-      .from('friendships')
+       as any).from('friendships')
       .select('requester_id, addressee_id')
       .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`)
       .eq('status', 'accepted')
 
-    const friendIds = (friendships || []).map(f =>
+    const friendIds = (friendships || []).map((f: any) =>
       f.requester_id === userId ? f.addressee_id : f.requester_id
     )
 
     // 同室メンバーのIDを取得
     const { data: roomMembers } = await supabase
-      .from('room_members')
+       as any).from('room_members')
       .select('user_id')
       .eq('room_id', roomId)
 
-    const roomMemberIds = (roomMembers || []).map(m => m.user_id)
+    const roomMemberIds = (roomMembers || []).map((m: any) => m.user_id)
 
     // フレンドの共有タスク（friends scope）
     // No friends and no room members → skip query
@@ -60,7 +60,7 @@ export function useTaskSharing(userId: string, roomId: string) {
     }
 
     let query = supabase
-      .from('tasks')
+       as any).from('tasks')
       .select('*, profiles(display_name, avatar_url)')
       .eq('is_shared', true)
       .neq('user_id', userId)
@@ -78,7 +78,7 @@ export function useTaskSharing(userId: string, roomId: string) {
     const { data: tasks } = await query.order('created_at', { ascending: false })
 
     if (tasks) {
-      setSharedTasks(tasks.map(t => ({
+      setSharedTasks(tasks.map((t: any) => ({
         ...t,
         display_name: (t.profiles as { display_name: string; avatar_url: string | null }).display_name,
         avatar_url: (t.profiles as { display_name: string; avatar_url: string | null }).avatar_url,
@@ -89,7 +89,7 @@ export function useTaskSharing(userId: string, roomId: string) {
   // スタディペアを取得
   const fetchStudyPairs = useCallback(async () => {
     const { data } = await supabase
-      .from('study_pairs')
+       as any).from('study_pairs')
       .select('*')
       .or(`user_a.eq.${userId},user_b.eq.${userId}`)
       .in('status', ['pending', 'active'])
@@ -97,21 +97,21 @@ export function useTaskSharing(userId: string, roomId: string) {
     if (!data) return
 
     // パートナー情報を取得
-    const partnerIds = data.map(p => p.user_a === userId ? p.user_b : p.user_a)
+    const partnerIds = data.map((p: any) => p.user_a === userId ? p.user_b : p.user_a)
     const { data: partnerProfiles } = await supabase
-      .from('profiles')
+       as any).from('profiles')
       .select('id, display_name, avatar_url')
       .in('id', partnerIds.length > 0 ? partnerIds : ['none'])
 
-    const pairs = data.map(p => ({
+    const pairs = data.map((p: any) => ({
       ...p,
-      partner: partnerProfiles?.find(pr =>
+      partner: partnerProfiles?.find((pr: any) =>
         pr.id === (p.user_a === userId ? p.user_b : p.user_a)
       ),
     })) as StudyPair[]
 
-    setStudyPairs(pairs.filter(p => p.status === 'active'))
-    setPendingPairRequests(pairs.filter(p =>
+    setStudyPairs(pairs.filter((p: any) => p.status === 'active'))
+    setPendingPairRequests(pairs.filter((p: any) =>
       p.status === 'pending' && p.requested_by !== userId
     ))
   }, [userId])
@@ -121,8 +121,7 @@ export function useTaskSharing(userId: string, roomId: string) {
     taskId: string,
     scope: 'private' | 'friends' | 'room'
   ) => {
-    await supabase
-      .from('tasks')
+    await (supabase as any).from('tasks')
       .update({ is_shared: scope !== 'private', share_scope: scope })
       .eq('id', taskId)
       .eq('user_id', userId)
@@ -130,19 +129,19 @@ export function useTaskSharing(userId: string, roomId: string) {
 
   // ペアリクエストを送る
   const requestPair = useCallback(async (partnerId: string) => {
-    await supabase.rpc('request_study_pair', { partner_id: partnerId })
+    await (supabase as any).rpc('request_study_pair', { partner_id: partnerId })
     fetchStudyPairs()
   }, [fetchStudyPairs])
 
   // ペアを承認する
   const acceptPair = useCallback(async (partnerId: string) => {
-    await supabase.rpc('accept_study_pair', { partner_id: partnerId })
+    await (supabase as any).rpc('accept_study_pair', { partner_id: partnerId })
     fetchStudyPairs()
   }, [fetchStudyPairs])
 
   // ペアを終了する
   const endPair = useCallback(async (partnerId: string) => {
-    await supabase.rpc('end_study_pair', { partner_id: partnerId })
+    await (supabase as any).rpc('end_study_pair', { partner_id: partnerId })
     fetchStudyPairs()
   }, [fetchStudyPairs])
 
@@ -172,8 +171,8 @@ export function useTaskSharing(userId: string, roomId: string) {
       .subscribe()
 
     return () => {
-      supabase.removeChannel(taskChannel)
-      supabase.removeChannel(pairChannel)
+      (supabase as any).removeChannel(taskChannel)
+      (supabase as any).removeChannel(pairChannel)
     }
   }, [userId, roomId])
 

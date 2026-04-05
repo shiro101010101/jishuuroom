@@ -1,0 +1,20 @@
+.wrap { display: flex; flex-direction: column; gap: 14px; }
+.section { background: var(--bg3); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+.sectionTitle { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
+.featureList { display: flex; flex-direction: column; gap: 10px; }
+.featureItem { display: flex; align-items: center; gap: 10px; }
+.featureIcon { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+.featureName { font-size: 12px; font-weight: 500; color: var(--text); }
+.featureDesc { font-size: 10px; color: var(--muted); margin-top: 2px; line-height: 1.4; }
+.featureBadge { margin-left: auto; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600; white-space: nowrap; flex-shrink: 0; }
+.settingRow { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.settingCol { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.settingLabel { font-size: 12px; color: var(--muted2); display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
+.disabled { font-size: 10px; color: var(--muted); margin-left: 4px; }
+.select { background: var(--bg2); border: 1px solid var(--border); border-radius: 6px; color: var(--muted2); font-size: 11px; padding: 4px 8px; cursor: pointer; font-family: inherit; outline: none; }
+.input { flex: 1; padding: 6px 10px; background: var(--bg2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 12px; font-family: inherit; outline: none; }
+.input:focus { border-color: var(--accent); }
+.statusBar { display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: var(--bg2); border-radius: 6px; margin-top: 6px; }
+.statusDot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; transition: background .3s; }
+.progressBar { flex: 1; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+.progressFill { height: 100%; background: var(--red); border-radius: 2px; transition: width .5s; }
