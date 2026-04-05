@@ -151,7 +151,6 @@ export type Block = {
   created_at: string
 }
 
-// Supabase Database type
 export type Database = {
   public: {
     Tables: {
@@ -172,6 +171,26 @@ export type Database = {
       blocks: { Row: Block; Insert: Partial<Block>; Update: Partial<Block> }
       banned_providers: { Row: { id: string; provider: string; provider_id: string }; Insert: Partial<{ id: string; provider: string; provider_id: string }>; Update: Partial<{ id: string; provider: string; provider_id: string }> }
       study_pairs: { Row: { id: string; user1_id: string; user2_id: string; status: string }; Insert: Partial<{ id: string; user1_id: string; user2_id: string; status: string }>; Update: Partial<{ id: string; user1_id: string; user2_id: string; status: string }> }
+    }
+    Functions: {
+      get_weekly_stats: {
+        Args: { target_user_id: string }
+        Returns: { day_of_week: number; total_seconds: number }[]
+      }
+      update_streak: { Args: Record<string, never>; Returns: void }
+      update_subject: { Args: { p_subject: string }; Returns: void }
+      send_reaction: {
+        Args: { p_receiver_id: string; p_room_id: string; p_emoji: string }
+        Returns: { success: boolean; error?: string; next_available?: string }
+      }
+      toggle_pin: {
+        Args: { p_target_id: string }
+        Returns: { pinned: boolean; mutual: boolean }
+      }
+      ban_user: {
+        Args: { target_user_id: string; reason: string }
+        Returns: void
+      }
     }
   }
 }
