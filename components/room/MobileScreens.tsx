@@ -267,6 +267,67 @@ export default function MobileScreens({
           </div>
         </div>
 
+        {/* Safety settings */}
+        <div style={{ padding:'0 0 8px' }}>
+          <div className={styles.secLabel}>🛡️ {lang==='ja'?'離席・安全設定':'Safety Settings'}</div>
+          <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:10, padding:'10px 12px', display:'flex', flexDirection:'column', gap:8 }}>
+            {/* Tab detection */}
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+              <span style={{ fontSize:12, color:'var(--muted2)' }}>📱 {lang==='ja'?'別タブ検出':'Tab Switch'}</span>
+              <span style={{ fontSize:11, color:'#34d399', fontWeight:600 }}>{lang==='ja'?'常時ON':'Always ON'}</span>
+            </div>
+            {/* Face detection */}
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+              <span style={{ fontSize:12, color:'var(--muted2)' }}>😊 {lang==='ja'?'顔検出':'Face Detection'}</span>
+              <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                <label style={{ display:'flex', alignItems:'center', gap:4 }}>
+                  <input type="checkbox" checked={faceDetectEnabled}
+                    onChange={e => onFaceDetectChange(e.target.checked)}
+                    disabled={!cameraOnForSafety}
+                    style={{ accentColor:'var(--accent)', width:16, height:16 }}/>
+                </label>
+                {faceDetectEnabled && cameraOnForSafety && (
+                  <select value={noFaceThreshold} onChange={e => onNoFaceThresholdChange(Number(e.target.value))}
+                    style={{ background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:5, color:'var(--accent)', fontSize:11, cursor:'pointer', fontFamily:'inherit', padding:'2px 4px' }}>
+                    <option value={30}>{lang==='ja'?'30秒':'30s'}</option>
+                    <option value={60}>{lang==='ja'?'1分':'1min'}</option>
+                    <option value={120}>{lang==='ja'?'2分':'2min'}</option>
+                    <option value={300}>{lang==='ja'?'5分':'5min'}</option>
+                    <option value={600}>{lang==='ja'?'10分':'10min'}</option>
+                  </select>
+                )}
+                {!cameraOnForSafety && <span style={{ fontSize:11, color:'var(--muted)' }}>{lang==='ja'?'カメラOFF':'Cam OFF'}</span>}
+              </div>
+            </div>
+            {/* Face status */}
+            {faceDetectEnabled && cameraOnForSafety && (
+              <div style={{ fontSize:11, paddingLeft:4,
+                color: faceStatus==='face_detected'?'#34d399':faceStatus==='no_face'?'#f87171':'var(--muted)' }}>
+                {faceStatus==='face_detected' ? '😊 '+(lang==='ja'?'顔を検出中':'Detected')
+                  : faceStatus==='no_face' ? `😴 ${noFaceSeconds}s / ${noFaceThreshold}s`
+                  : '🔍 '+(lang==='ja'?'確認中':'Checking')}
+              </div>
+            )}
+            {/* Inactivity detection */}
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+              <span style={{ fontSize:12, color:'var(--muted2)' }}>⌨️ {lang==='ja'?'操作なし検出':'Inactivity'}</span>
+              <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                <label style={{ display:'flex', alignItems:'center', gap:4 }}>
+                  <input type="checkbox" checked={awayEnabled}
+                    onChange={e => onAwayEnabledChange(e.target.checked)}
+                    style={{ accentColor:'var(--accent)', width:16, height:16 }}/>
+                </label>
+                {awayEnabled && (
+                  <select value={awayMinutes} onChange={e => onAwayMinutesChange(Number(e.target.value))}
+                    style={{ background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:5, color:'var(--accent)', fontSize:11, cursor:'pointer', fontFamily:'inherit', padding:'2px 4px' }}>
+                    {[1,3,5,10].map(m => <option key={m} value={m}>{m}{lang==='ja'?'分':'min'}</option>)}
+                  </select>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Room list */}
         <div>
           <div className={styles.secLabel}>🏠 ルーム一覧</div>
