@@ -178,48 +178,46 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
   }, [statView])
 
   async function fetchSessions() {
-    const { data, error } = await supabase
+    const supa = supabase as any
+    const { data, error } = await supa
       .from('scheduled_sessions')
       .select('id, title, scheduled_at, subject, host_id, duration_mins, room_id')
-      .eq('host_id', profile.id)   // 自分が主催したセッション
+      .eq('host_id', profile.id)
       .gte('scheduled_at', new Date(Date.now() - 24*60*60*1000).toISOString())
       .order('scheduled_at', { ascending: true })
       .limit(20)
     if (error) { console.error('fetchSessions error:', error); return }
 
-    // Also fetch sessions user is a participant in
-    const { data: myParticipations } = await (supabase as any)
+    const { data: myParticipations } = await supa
       .from('session_participants')
       .select('session_id')
       .eq('user_id', profile.id)
 
-    let allData = data || []
+    let allData: any[] = data || []
     if (myParticipations && myParticipations.length > 0) {
-      const participatedIds = (myParticipations as any[]).map((p: any) => p.session_id)
-      const { data: partSessions } = await supabase
+      const participatedIds = myParticipations.map((p: any) => p.session_id)
+      const { data: partSessions } = await supa
         .from('scheduled_sessions')
         .select('id, title, scheduled_at, subject, host_id, duration_mins, room_id')
         .in('id', participatedIds)
         .gte('scheduled_at', new Date(Date.now() - 24*60*60*1000).toISOString())
         .order('scheduled_at', { ascending: true })
       if (partSessions) {
-        // Merge and deduplicate
-        const ids = new Set(allData.map(s => s.id))
-        partSessions.forEach(s => { if (!ids.has(s.id)) allData.push(s) })
+        const ids = new Set(allData.map((s: any) => s.id))
+        partSessions.forEach((s: any) => { if (!ids.has(s.id)) allData.push(s) })
       }
     }
-    allData.sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())
+    allData.sort((a: any, b: any) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())
 
     if (allData) {
-      // Fetch host names separately
-      const hostIds = [...new Set(allData.map(s => s.host_id))]
-      const { data: profiles } = await supabase
+      const hostIds = [...new Set(allData.map((s: any) => s.host_id))]
+      const { data: profiles } = await supa
         .from('profiles')
         .select('id, display_name')
         .in('id', hostIds.length > 0 ? hostIds : ['none'])
       const profileMap: Record<string, string> = {}
-      profiles?.forEach(p => { profileMap[p.id] = p.display_name })
-      setScheduledSessions(allData.map(s => ({
+      profiles?.forEach((p: any) => { profileMap[p.id] = p.display_name })
+      setScheduledSessions(allData.map((s: any) => ({
         ...s,
         profiles: { display_name: profileMap[s.host_id] || 'Unknown' }
       })))
