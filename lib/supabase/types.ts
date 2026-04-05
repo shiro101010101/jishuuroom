@@ -13,6 +13,8 @@ export type Profile = {
   last_seen: string
   study_streak: number
   total_study_seconds: number
+  subject: string | null
+  last_study_date: string | null
 }
 
 export type Room = {
@@ -32,12 +34,12 @@ export type RoomMember = {
   id: string
   room_id: string
   user_id: string
-  joined_at: string
-  camera_on: boolean
   status: 'studying' | 'break' | 'away'
   current_task: string | null
+  camera_on: boolean
   study_seconds: number
-  profiles?: Profile
+  joined_at: string
+  profiles?: { display_name: string; avatar_url: string | null; study_streak?: number; subject?: string }
 }
 
 export type Message = {
@@ -47,7 +49,6 @@ export type Message = {
   content: string
   is_read: boolean
   created_at: string
-  sender?: Profile
 }
 
 export type Friendship = {
@@ -62,12 +63,11 @@ export type Friendship = {
 export type StudySession = {
   id: string
   user_id: string
-  room_id: string | null
+  room_id: string
   started_at: string
   ended_at: string | null
-  duration_seconds: number | null
+  duration_seconds: number
   pomodoros_completed: number
-  tasks_completed: number
 }
 
 export type Task = {
@@ -75,17 +75,19 @@ export type Task = {
   user_id: string
   title: string
   completed: boolean
-  created_at: string
   completed_at: string | null
+  is_shared: boolean
+  share_scope: string | null
+  created_at: string
 }
 
 export type WebRTCSignal = {
   id: string
   room_id: string
-  from_user: string
-  to_user: string
-  type: 'offer' | 'answer' | 'ice-candidate'
-  payload: Record<string, unknown>
+  sender_id: string
+  receiver_id: string
+  signal_type: string
+  payload: string
   created_at: string
 }
 
@@ -95,7 +97,57 @@ export type Report = {
   reported_id: string
   reason: string
   details: string | null
-  status: 'pending' | 'reviewed' | 'actioned'
+  created_at: string
+}
+
+export type Reaction = {
+  id: string
+  sender_id: string
+  receiver_id: string
+  room_id: string
+  emoji: string
+  created_at: string
+}
+
+export type Pin = {
+  id: string
+  pinner_id: string
+  pinned_id: string
+  created_at: string
+}
+
+export type DailyMessage = {
+  id: string
+  user_id: string
+  room_id: string
+  content: string
+  created_at: string
+  date: string
+}
+
+export type ScheduledSession = {
+  id: string
+  host_id: string
+  room_id: string
+  title: string
+  subject: string | null
+  scheduled_at: string
+  duration_mins: number
+  max_members: number
+  created_at: string
+}
+
+export type SessionParticipant = {
+  id: string
+  session_id: string
+  user_id: string
+  joined_at: string
+}
+
+export type Block = {
+  id: string
+  blocker_id: string
+  blocked_id: string
   created_at: string
 }
 
@@ -112,6 +164,14 @@ export type Database = {
       tasks: { Row: Task; Insert: Partial<Task>; Update: Partial<Task> }
       webrtc_signals: { Row: WebRTCSignal; Insert: Partial<WebRTCSignal>; Update: Partial<WebRTCSignal> }
       reports: { Row: Report; Insert: Partial<Report>; Update: Partial<Report> }
+      reactions: { Row: Reaction; Insert: Partial<Reaction>; Update: Partial<Reaction> }
+      pins: { Row: Pin; Insert: Partial<Pin>; Update: Partial<Pin> }
+      daily_messages: { Row: DailyMessage; Insert: Partial<DailyMessage>; Update: Partial<DailyMessage> }
+      scheduled_sessions: { Row: ScheduledSession; Insert: Partial<ScheduledSession>; Update: Partial<ScheduledSession> }
+      session_participants: { Row: SessionParticipant; Insert: Partial<SessionParticipant>; Update: Partial<SessionParticipant> }
+      blocks: { Row: Block; Insert: Partial<Block>; Update: Partial<Block> }
+      banned_providers: { Row: { id: string; provider: string; provider_id: string }; Insert: Partial<{ id: string; provider: string; provider_id: string }>; Update: Partial<{ id: string; provider: string; provider_id: string }> }
+      study_pairs: { Row: { id: string; user1_id: string; user2_id: string; status: string }; Insert: Partial<{ id: string; user1_id: string; user2_id: string; status: string }>; Update: Partial<{ id: string; user1_id: string; user2_id: string; status: string }> }
     }
   }
 }
