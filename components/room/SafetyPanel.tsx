@@ -211,12 +211,12 @@ export default function SafetyPanel({
 
       {/* ── 保護者通知 ── */}
       <div className={styles.section}>
-        <div className={styles.sectionTitle}>👨‍👩‍👧 保護者への通知 <span style={{ fontSize:10, fontWeight:400, color:'var(--muted)' }}>（オプション・PIN保護）</span></div>
+        <div className={styles.sectionTitle}>📨 離席検出の通知先 <span style={{ fontSize:10, fontWeight:400, color:'var(--muted)' }}>（オプション・PIN保護）</span></div>
 
         {/* PIN verification */}
         {savedPin && !pinVerified && (
           <div className={styles.pinBox}>
-            <div style={{ fontSize:12, color:'var(--muted2)', marginBottom:8 }}>🔐 設定を変更するにはPINを入力してください</div>
+            <div style={{ fontSize:12, color:'var(--muted2)', marginBottom:8 }}>🔐 通知先を変更するにはPINを入力してください</div>
             <div style={{ display:'flex', gap:6 }}>
               <input type="password" maxLength={4} value={pinInput}
                 onChange={e => { setPinInput(e.target.value); setPinError(false) }}
@@ -235,7 +235,7 @@ export default function SafetyPanel({
 
         {!savedPin && (
           <div className={styles.row}>
-            <span className={styles.label}>🔐 PINを設定</span>
+            <span className={styles.label}>🔐 変更防止PIN</span>
             <input type="password" maxLength={4} value={pin}
               onChange={e => setPin(e.target.value)}
               placeholder="4桁（任意）"
@@ -264,18 +264,18 @@ export default function SafetyPanel({
         {notifyMethod === 'email' && (
           <>
             <div className={styles.row}>
-              <span className={styles.label}>保護者メール</span>
+              <span className={styles.label}>通知先メール</span>
               <input type="email" value={parentEmail}
                 onChange={e => setParentEmail(e.target.value)}
-                placeholder="parent@example.com"
+                placeholder="通知先メールアドレス"
                 className={styles.input} />
             </div>
             <div className={styles.infoBox}>
-              📋 以下のタイミングで通知されます：
+              📋 以下のタイミングでメールが届きます：
               <ul style={{ margin:'6px 0 0 14px', padding:0, fontSize:10, color:'var(--muted)', lineHeight:1.8 }}>
-                <li>顔が検出されない時間が続いた時</li>
-                <li>別タブへの移動が続いた時</li>
-                <li>不適切な言葉が送信されようとした時</li>
+                <li>😊 顔が検出されない時間が続いた時</li>
+                <li>📱 別タブへの移動が3回以上続いた時</li>
+                <li>🚫 不適切な言葉の送信を試みた時</li>
               </ul>
             </div>
             <button onClick={save} disabled={saving || !parentEmail}

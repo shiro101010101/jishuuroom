@@ -865,21 +865,55 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
               </div>
             </div>
 
-            {/* Away settings */}
+            {/* Away & Safety settings */}
             <div>
-              <div className={styles.secLabel}>👁 離席検出</div>
-              <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-                <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, color:'var(--muted2)', cursor:'pointer' }}>
-                  <input type="checkbox" checked={awayEnabled} onChange={e => setAwayEnabled(e.target.checked)} style={{ accentColor:'var(--accent)' }}/>
-                  有効
-                </label>
-                {awayEnabled && (
-                  <select value={awayMinutes} onChange={e => setAwayMinutes(Number(e.target.value))}
-                    style={{ background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:6, color:'var(--muted2)', fontSize:11, padding:'3px 6px', cursor:'pointer' }}>
-                    <option value={1}>1分</option><option value={3}>3分</option>
-                    <option value={5}>5分</option><option value={10}>10分</option>
-                  </select>
-                )}
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
+                <div className={styles.secLabel} style={{ margin:0 }}>🛡️ 離席・安全設定</div>
+                <button onClick={() => setActiveTab('safety')}
+                  style={{ fontSize:10, color:'var(--accent)', background:'transparent', border:'none', cursor:'pointer', fontFamily:'inherit', padding:0 }}>
+                  詳細設定 →
+                </button>
+              </div>
+
+              {/* Quick status indicators */}
+              <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'6px 8px', background:'var(--bg3)', borderRadius:7, border:'1px solid var(--border)' }}>
+                  <span style={{ fontSize:11, color:'var(--muted2)' }}>📱 別タブ検出</span>
+                  <span style={{ fontSize:10, color:'#34d399', fontWeight:600 }}>常時ON</span>
+                </div>
+
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'6px 8px', background:'var(--bg3)', borderRadius:7, border:'1px solid var(--border)' }}>
+                  <span style={{ fontSize:11, color:'var(--muted2)' }}>😊 顔検出</span>
+                  <label style={{ display:'flex', alignItems:'center', gap:4, cursor: cameraOn ? 'pointer' : 'not-allowed' }}>
+                    <input type="checkbox" checked={faceDetectEnabled}
+                      onChange={e => setFaceDetectEnabled(e.target.checked)}
+                      disabled={!cameraOn}
+                      style={{ accentColor:'var(--accent)', width:12, height:12 }}/>
+                    <span style={{ fontSize:10, color: cameraOn ? 'var(--muted2)' : 'var(--muted)' }}>
+                      {faceDetectEnabled && cameraOn
+                        ? faceStatus === 'face_detected' ? '✅ 検出中'
+                          : faceStatus === 'no_face' ? `⚠️ ${noFaceSeconds}秒`
+                          : '🔍 確認中'
+                        : cameraOn ? 'OFF' : 'カメラOFF'}
+                    </span>
+                  </label>
+                </div>
+
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'6px 8px', background:'var(--bg3)', borderRadius:7, border:`1px solid ${awayEnabled?'var(--accent)':'var(--border)'}` }}>
+                  <span style={{ fontSize:11, color:'var(--muted2)' }}>⌨️ 操作なし検出</span>
+                  <label style={{ display:'flex', alignItems:'center', gap:4, cursor:'pointer' }}>
+                    <input type="checkbox" checked={awayEnabled}
+                      onChange={e => setAwayEnabled(e.target.checked)}
+                      style={{ accentColor:'var(--accent)', width:12, height:12 }}/>
+                    {awayEnabled && (
+                      <select value={awayMinutes} onChange={e => setAwayMinutes(Number(e.target.value))}
+                        style={{ background:'transparent', border:'none', color:'var(--accent)', fontSize:10, cursor:'pointer', fontFamily:'inherit', outline:'none' }}>
+                        <option value={1}>1分</option><option value={3}>3分</option>
+                        <option value={5}>5分</option><option value={10}>10分</option>
+                      </select>
+                    )}
+                  </label>
+                </div>
               </div>
             </div>
 
