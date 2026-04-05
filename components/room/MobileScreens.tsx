@@ -305,7 +305,7 @@ export default function MobileScreens({
                 color: faceStatus==='face_detected'?'#34d399':faceStatus==='no_face'?'#f87171':'var(--muted)' }}>
                 {faceStatus==='face_detected' ? '😊 '+(lang==='ja'?'顔を検出中':'Detected')
                   : faceStatus==='no_face' ? `😴 ${noFaceSeconds}s / ${noFaceThreshold}s`
-                  : '🔍 '+(lang==='ja'?'確認中':'Checking')}
+                  : ''}
               </div>
             )}
             {/* Inactivity detection */}

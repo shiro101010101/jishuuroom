@@ -24,30 +24,33 @@ export function useFaceDetection(
     const ctx = canvas.getContext('2d')
     if (!ctx || video.readyState < 2) return
 
-    canvas.width = 64
-    canvas.height = 64
-    ctx.drawImage(video, 0, 0, 64, 64)
+    canvas.width = 80
+    canvas.height = 80
+    ctx.drawImage(video, 0, 0, 80, 80)
 
     // Simple skin-tone detection heuristic
     const imageData = ctx.getImageData(0, 0, 64, 64)
     const data = imageData.data
     let skinPixels = 0
-    const totalPixels = 64 * 64
+    const totalPixels = 80 * 80
 
     for (let i = 0; i < data.length; i += 4) {
       const r = data[i], g = data[i + 1], b = data[i + 2]
-      // Skin tone range (works for various skin tones)
+      // Improved skin tone detection for various ethnicities
       const isSkin = (
-        r > 60 && g > 40 && b > 20 &&
-        r > b &&
-        Math.abs(r - g) < 50 &&
-        r > 100
+        // Light skin tones
+        (r > 95 && g > 40 && b > 20 && r > g && r > b && Math.abs(r-g) > 15) ||
+        // Medium skin tones
+        (r > 80 && g > 50 && b > 30 && r > b && r > g * 0.8) ||
+        // Darker skin tones  
+        (r > 60 && g > 35 && b > 20 && r > b * 1.1 && r > g * 0.9)
       )
       if (isSkin) skinPixels++
     }
 
     const skinRatio = skinPixels / totalPixels
-    const faceDetected = skinRatio > 0.08 // 8% skin pixels = face likely present
+    // Lower threshold - easier to detect (5% instead of 8%)
+    const faceDetected = skinRatio > 0.05
 
     if (faceDetected) {
       setFaceStatus('face_detected')
@@ -91,7 +94,7 @@ export function useFaceDetection(
     setFaceStatus('checking')
 
     // Check every 3 seconds
-    intervalRef.current = setInterval(detectFace, 3000)
+    intervalRef.current = setInterval(detectFace, 2000)
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current)

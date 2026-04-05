@@ -127,6 +127,9 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
 
   // ── UI ──
   const [activeTab, setActiveTab] = useState<'stats' | 'bgm' | 'activity' | 'schedule' | 'safety'>('stats')
+  const [showProfileEdit, setShowProfileEdit] = useState(false)
+  const [editName, setEditName] = useState(profile.display_name)
+  const [savingName, setSavingName] = useState(false)
 
   // ── Language ──
   const [lang, setLang] = useState<Lang>('ja')
@@ -293,6 +296,16 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
     if (awayCountRef.current) clearInterval(awayCountRef.current)
     setAwayModal(false); updateStatus('studying', currentTask, cameraOn)
     lastActivityRef.current = Date.now(); showToast('📚 おかえりなさい！')
+  }
+
+  async function saveDisplayName() {
+    if (!editName.trim()) return
+    setSavingName(true)
+    await (supabase as any).from('profiles').update({ display_name: editName.trim() }).eq('id', profile.id)
+    profile.display_name = editName.trim()
+    setSavingName(false)
+    setShowProfileEdit(false)
+    showToast(lang==='ja'?'✅ 名前を変更しました':'✅ Name updated!')
   }
 
   async function addTask(title: string) {
@@ -764,7 +777,8 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
             style={{ padding:'4px 10px', background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:6, color:'var(--muted2)', fontSize:11, cursor:'pointer', fontFamily:'inherit', fontWeight:600 }}>
             {lang === 'ja' ? '🇬🇧 EN' : '🇯🇵 JP'}
           </button>
-          <div className={styles.avatarBtn}>
+          <div className={styles.avatarBtn} onClick={() => { setEditName(profile.display_name); setShowProfileEdit(true) }}
+            style={{ cursor:'pointer' }} title={lang==='ja'?'名前を変更':'Edit name'}>
             {profile.avatar_url ? <img src={profile.avatar_url} alt="" width={32} height={32} style={{ borderRadius:'50%', objectFit:'cover' }}/> : profile.display_name[0]}
           </div>
           <button className={styles.signOutBtn} onClick={() => signOut({ callbackUrl:'/' })}>{T.logout}</button>
