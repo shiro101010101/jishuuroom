@@ -2,10 +2,12 @@
 // components/room/MobileScreens.tsx
 import { useRef, useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { signOut } from 'next-auth/react'
 import TaskPanel from './TaskPanel'
 import type { Profile, Room, RoomMember, Task, Friendship } from '@/lib/supabase/types'
 import type { useTimer } from '@/hooks/useTimer'
 import type { SharedTask, StudyPair } from '@/hooks/useTaskSharing'
+import SafetyPanel from './SafetyPanel'
 import styles from './MobileScreens.module.css'
 
 type TimerState = ReturnType<typeof useTimer>
@@ -45,6 +47,19 @@ type Props = {
   todaySeconds: number
   pomosToday: number
   tasksDoneToday: number
+  lang: 'ja' | 'en'
+  onUpdateShare?: (taskId: string, scope: 'private' | 'friends' | 'room') => Promise<void>
+  faceDetectEnabled: boolean
+  noFaceThreshold: number
+  awayEnabled: boolean
+  awayMinutes: number
+  faceStatus: string
+  noFaceSeconds: number
+  onFaceDetectChange: (v: boolean) => void
+  onNoFaceThresholdChange: (v: number) => void
+  onAwayEnabledChange: (v: boolean) => void
+  onAwayMinutesChange: (v: number) => void
+  cameraOnForSafety: boolean
 }
 
 const BGM_TRACKS = [
@@ -69,6 +84,12 @@ export default function MobileScreens({
   onOpenChat, onBlock, onReport, onAcceptFriend,
   onToggleBgm, onSetVolume, onJoinRoom, onLeaveRoom,
   todaySeconds, pomosToday, tasksDoneToday,
+  lang, onUpdateShare,
+  faceDetectEnabled, noFaceThreshold, awayEnabled, awayMinutes,
+  faceStatus, noFaceSeconds,
+  onFaceDetectChange, onNoFaceThresholdChange,
+  onAwayEnabledChange, onAwayMinutesChange,
+  cameraOnForSafety,
 }: Props) {
   const router = useRouter()
   const [quote, setQuote] = useState(QUOTES[0])
@@ -182,10 +203,14 @@ export default function MobileScreens({
           <button
             className={`${styles.camToggle} ${cameraOn ? styles.camToggleOn : ''}`}
             onClick={onToggleCamera}>
-            📷 {cameraOn ? 'カメラON' : 'カメラOFF'}
+            📷 {cameraOn ? (lang==='ja'?'カメラON':'Cam ON') : (lang==='ja'?'カメラOFF':'Cam OFF')}
           </button>
-          <span className={styles.micBadge}>🔇 マイク禁止</span>
-          <button className={styles.leaveBtn} onClick={onLeaveRoom}>退室</button>
+          <span className={styles.micBadge}>🔇 {lang==='ja'?'マイク禁止':'Mic Off'}</span>
+          <button className={styles.leaveBtn} onClick={onLeaveRoom}>{lang==='ja'?'退室':'Leave'}</button>
+          <button onClick={() => signOut({ callbackUrl: '/' })}
+            style={{ padding:'5px 10px', background:'transparent', border:'1px solid var(--border)', borderRadius:6, color:'var(--muted)', fontSize:11, cursor:'pointer', fontFamily:'inherit' }}>
+            {lang==='ja'?'ログアウト':'Log out'}
+          </button>
         </div>
 
         {/* Camera grid 2-col */}

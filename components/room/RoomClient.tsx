@@ -1344,6 +1344,19 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
           onJoinRoom={(rid) => router.push(`/room/${rid}`)}
           onLeaveRoom={() => router.push('/')}
           todaySeconds={todaySeconds} pomosToday={pomosToday} tasksDoneToday={tasksDoneToday}
+          lang={lang}
+          onUpdateShare={updateTaskShareLocal}
+          faceDetectEnabled={faceDetectEnabled}
+          noFaceThreshold={noFaceThreshold}
+          awayEnabled={awayEnabled}
+          awayMinutes={awayMinutes}
+          faceStatus={faceStatus}
+          noFaceSeconds={noFaceSeconds}
+          onFaceDetectChange={setFaceDetectEnabled}
+          onNoFaceThresholdChange={setNoFaceThreshold}
+          onAwayEnabledChange={setAwayEnabled}
+          onAwayMinutesChange={setAwayMinutes}
+          cameraOnForSafety={cameraOn}
         />
       </div>
 
