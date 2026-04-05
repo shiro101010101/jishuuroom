@@ -63,11 +63,11 @@ type Props = {
 }
 
 const BGM_TRACKS = [
-  { id: 'lofi',   name: 'Lo-fi Hip Hop',     icon: '🎹' },
-  { id: 'rain',   name: '雨音 + カフェ',       icon: '🌧️' },
-  { id: 'nature', name: '森の環境音',           icon: '🌿' },
-  { id: 'cafe',   name: 'カフェの雑音',         icon: '☕' },
-  { id: 'piano',  name: 'ピアノ アンビエント',  icon: '🎵' },
+  { id: 'lofi',   nameJa: 'Lo-fi Hip Hop',     nameEn: 'Lo-fi Hip Hop',     icon: '🎹' },
+  { id: 'rain',   nameJa: '雨音 + カフェ',       nameEn: 'Rain + Cafe',       icon: '🌧️' },
+  { id: 'nature', nameJa: '森の環境音',           nameEn: 'Nature Sounds',     icon: '🌿' },
+  { id: 'cafe',   nameJa: 'カフェの雑音',         nameEn: 'Cafe Ambience',     icon: '☕' },
+  { id: 'piano',  nameJa: 'ピアノ アンビエント',  nameEn: 'Piano Ambient',     icon: '🎵' },
 ]
 
 const QUOTES = [
@@ -148,7 +148,7 @@ export default function MobileScreens({
           <div className={styles.ringInner}>
             <div className={styles.bigDigits}>{fmtTime(timer.seconds)}</div>
             <div className={styles.bigLbl}>
-              {timer.mode === 'focus' ? '集中モード' : timer.mode === 'short' ? '小休憩' : '長休憩'}
+              {timer.mode === 'focus' ? '集中モード' : timer.mode === 'short' ? lang==='ja'?'小休憩':'Short Break' : lang==='ja'?'長休憩':'Long Break'}
             </div>
           </div>
         </div>
@@ -244,7 +244,7 @@ export default function MobileScreens({
               const away = m.status === 'away'
               return (
                 <div key={m.id} className={`${styles.camCard} ${away ? styles.camCardAway : ''}`}>
-                  {away && <div className={styles.awayTag}>😴 席外</div>}
+                  {away && <div className={styles.awayTag}>{lang==='ja'?'😴 席外':'😴 Away'}</div>}
                   {rs
                     ? <video className={styles.camVideo} style={{ aspectRatio:"4/3", objectFit:"cover", width:"100%", height:"auto" }}
                         ref={v => { if (v && v.srcObject !== rs) v.srcObject = rs }}
@@ -313,7 +313,7 @@ export default function MobileScreens({
                     <div className={styles.friendReqMeta}>フレンド申請が届いています</div>
                   </div>
                   <button className={styles.acceptBtn}
-                    onClick={() => onAcceptFriend(req.id)}>承認</button>
+                    onClick={() => onAcceptFriend(req.id)}>{lang==='ja'?'承認':'Accept'}</button>
                 </div>
               )
             })}
@@ -328,7 +328,7 @@ export default function MobileScreens({
           {friends.length === 0 && (
             <div className={styles.emptyState}>
               <div style={{ fontSize: 36, marginBottom: 8 }}>👋</div>
-              <div>まだフレンドがいません</div>
+              <div>{lang==='ja'?'まだフレンドがいません':'No friends yet'}</div>
               <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
                 同室のユーザーのカメラ上の⚠️から報告できます
               </div>
@@ -350,7 +350,7 @@ export default function MobileScreens({
                     {fp.display_name}
                     {unread > 0 && <span className={styles.unreadBadge}>{unread}</span>}
                   </div>
-                  <div className={styles.friendCardMeta}>勉強中</div>
+                  <div className={styles.friendCardMeta}>{lang==='ja'?'勉強中':'Studying'}</div>
                 </div>
                 <div className={styles.friendCardActions}>
                   <button className={styles.chatBtn}
@@ -380,11 +380,11 @@ export default function MobileScreens({
           </div>
           <div className={styles.statCard}>
             <div className={styles.statVal}>{pomosToday}</div>
-            <div className={styles.statSub}>ポモドーロ</div>
+            <div className={styles.statSub}>{lang==='ja'?'ポモドーロ':'Pomodoros'}</div>
           </div>
           <div className={styles.statCard}>
             <div className={styles.statVal}>{tasksDoneToday}✅</div>
-            <div className={styles.statSub}>タスク完了</div>
+            <div className={styles.statSub}>{lang==='ja'?'タスク完了':'Tasks Done'}</div>
           </div>
           <div className={styles.statCard}>
             <div className={styles.statVal}>{members.length}</div>
@@ -393,7 +393,7 @@ export default function MobileScreens({
         </div>
 
         <div className={styles.section}>
-          <div className={styles.secLabel}>📅 今週の記録</div>
+          <div className={styles.secLabel}>{lang==='ja'?'📅 今週の記録':'📅 This Week'}</div>
           <div className={styles.weekChart}>
             {weekDays.map((d, i) => {
               const s = weekMap[i] || 0
@@ -438,7 +438,7 @@ export default function MobileScreens({
         </div>
 
         <div className={styles.section}>
-          <div className={styles.secLabel}>💬 今日の言葉</div>
+          <div className={styles.secLabel}>{lang==='ja'?'💬 今日の言葉':"💬 Today's Quote"}</div>
           <div className={styles.quoteBox}>
             「{quote.text}」
             <div className={styles.quoteAuthor}>— {quote.author}</div>
