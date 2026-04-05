@@ -188,14 +188,14 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
     if (error) { console.error('fetchSessions error:', error); return }
 
     // Also fetch sessions user is a participant in
-    const { data: myParticipations } = await supabase
+    const { data: myParticipations } = await (supabase as any)
       .from('session_participants')
       .select('session_id')
       .eq('user_id', profile.id)
 
     let allData = data || []
     if (myParticipations && myParticipations.length > 0) {
-      const participatedIds = myParticipations.map(p => p.session_id)
+      const participatedIds = (myParticipations as any[]).map((p: any) => p.session_id)
       const { data: partSessions } = await supabase
         .from('scheduled_sessions')
         .select('id, title, scheduled_at, subject, host_id, duration_mins, room_id')
@@ -316,7 +316,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
     if (!privateRoom) { showToast('❌ ルーム作成に失敗しました'); return }
 
     // セッションをプライベートルームに紐付け
-    const { data: session } = await supabase.from('scheduled_sessions').insert({
+    const { data: session } = await (supabase as any).from('scheduled_sessions').insert({
       host_id: profile.id,
       room_id: privateRoom.id,
       title: schedTitle,
@@ -327,7 +327,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
 
     // ホスト自身を参加者に追加
     if (session) {
-      await supabase.from('session_participants').insert({
+      await (supabase as any).from('session_participants').insert({
         session_id: session.id, user_id: profile.id
       })
     }
@@ -337,7 +337,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
     showToast('📅 予約完了！参加者には招待リンクを共有してください')
   }
   async function joinSession(sessionId: string) {
-    await supabase.from('session_participants').upsert(
+    await (supabase as any).from('session_participants').upsert(
       { session_id: sessionId, user_id: profile.id },
       { onConflict: 'session_id,user_id' }
     )
@@ -1013,13 +1013,13 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                       tasks={tasks}
                       scheduledSessions={scheduledSessions}
                       onJoinSession={async (s) => {
-                        const { data: sess } = await supabase
+                        const { data: sess } = await (supabase as any)
                           .from('scheduled_sessions')
                           .select('room_id')
                           .eq('id', s.id)
                           .single()
                         if (sess?.room_id) {
-                          await supabase.from('session_participants').upsert(
+                          await (supabase as any).from('session_participants').upsert(
                             { session_id: s.id, user_id: profile.id },
                             { onConflict: 'session_id,user_id' }
                           )
