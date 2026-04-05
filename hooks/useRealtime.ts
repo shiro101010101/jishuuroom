@@ -58,7 +58,7 @@ export function useRoomRealtime(roomId: string, userId: string) {
         filter: `room_id=eq.${roomId}`,
       }, () => fetchMembers())
       .subscribe()
-    return () => { supabase.removeChannel(ch) }
+    return () => { try { supabase.getChannels().find((c:any)=>c===ch)?.unsubscribe() } catch{} }
   }, [roomId])
 
   const updateStatus = useCallback(async (
@@ -110,7 +110,7 @@ export function useMessages(userId: string, friendId: string) {
         }
       })
       .subscribe()
-    return () => { supabase.removeChannel(ch) }
+    return () => { try { supabase.getChannels().find((c:any)=>c===ch)?.unsubscribe() } catch{} }
   }, [userId, friendId])
 
   const sendMessage = useCallback(async (content: string) => {
@@ -177,7 +177,7 @@ export function useFriends(userId: string) {
         filter: `receiver_id=eq.${userId}`,
       }, () => fetchFriends())
       .subscribe()
-    return () => { supabase.removeChannel(ch) }
+    return () => { try { supabase.getChannels().find((c:any)=>c===ch)?.unsubscribe() } catch{} }
   }, [userId])
 
   const sendFriendRequest = useCallback(async (targetId: string) => {

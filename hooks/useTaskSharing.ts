@@ -96,7 +96,7 @@ export function useTaskSharing(userId: string, roomId: string) {
     const partnerIds = data.map((p: any) => p.user_a === userId ? p.user_b : p.user_a)
     const { data: partnerProfiles } = await (supabase as any).from('profiles')
       .select('id, display_name, avatar_url')
-      .in('id', partnerIds.length > 0 ? partnerIds : ['none'])
+      .in('id', partnerIds)
 
     const pairs = data.map((p: any) => ({
       ...p,
@@ -168,8 +168,8 @@ export function useTaskSharing(userId: string, roomId: string) {
       .subscribe()
 
     return () => {
-      (supabase as any).removeChannel(taskChannel)
-      (supabase as any).removeChannel(pairChannel)
+      try { (taskChannel as any)?.unsubscribe?.() } catch{}
+      try { (pairChannel as any)?.unsubscribe?.() } catch{}
     }
   }, [userId, roomId])
 

@@ -1,14 +1,16 @@
 {
-  "name": "自習室 JP",
-  "short_name": "自習室",
-  "description": "日本人向けオンライン自習室",
+  "name": "Study With Me JP | 自習室",
+  "short_name": "自習室 JP",
+  "description": "みんなと一緒に集中して勉強しよう",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0a0c10",
   "theme_color": "#0a0c10",
-  "orientation": "portrait",
   "icons": [
-    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64",
+      "type": "image/x-icon"
+    }
   ]
 }

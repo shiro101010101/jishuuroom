@@ -246,7 +246,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
       const hostIds = Array.from(new Set(allData.map((s: any) => s.host_id)))
       const { data: profiles } = await supa.from('profiles')
         .select('id, display_name')
-        .in('id', hostIds.length > 0 ? hostIds : ['none'])
+        .in('id', hostIds)
       const profileMap: Record<string, string> = {}
       profiles?.forEach((p: any) => { profileMap[p.id] = p.display_name })
       setScheduledSessions(allData.map((s: any) => ({

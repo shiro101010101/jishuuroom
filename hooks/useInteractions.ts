@@ -119,8 +119,8 @@ export function useInteractions(userId: string, roomId: string) {
       .subscribe()
 
     return () => {
-      supabase.removeChannel(ch)
-      supabase.removeChannel(pinCh)
+      try { supabase.getChannels().find((c:any)=>c===ch)?.unsubscribe() } catch{}
+      try { supabase.getChannels().find((c:any)=>c===pinCh)?.unsubscribe() } catch{}
     }
   }, [userId, roomId])
 
