@@ -566,7 +566,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
     return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
   }
 
-  const weekDays = ['日','月','火','水','木','金','土']
+  const weekDays = ['日',lang==='ja'?'月':'Month','火','水','木','金','土']
   const weekDataMap: Record<number,number> = {}
   weeklyStats.forEach((d: any) => { weekDataMap[d.day_of_week] = Number(d.total_seconds) })
   const maxWeek = Math.max(...Object.values(weekDataMap), 3600)
@@ -753,7 +753,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
       <header className={styles.header}>
         <div className={styles.logo}>
           <div className={styles.logoIcon}>📚</div>
-          <span>自習室 JP</span>
+          <span>{lang==='ja'?'自習室 JP':'Study With Me JP'}</span>
         </div>
         <div className={styles.headerCenter}>
           <div className={styles.onlineBadge}><span className={styles.liveDot}/>{onlineCount}{lang==='ja'?'人が勉強中':' studying now'}</div>
@@ -926,7 +926,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
           {/* Camera bar */}
           <div className={styles.camCtrl}>
             <button className={`${styles.ctrlBtn} ${cameraOn?styles.ctrlBtnActive:''}`} onClick={() => setCameraOn(v => !v)}>
-              📷 {cameraOn?'カメラON':'カメラOFF'}
+              📷 {cameraOn ? (lang==='ja'?'カメラON':'Camera ON') : (lang==='ja'?'カメラOFF':'Camera OFF')}
             </button>
             <div className={styles.micBadge}>{T.micBanned}</div>
             <div className={styles.ctrlInfo}>{T.noTalk}</div>
@@ -946,7 +946,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
             </div>
             <div style={{ display:'flex', gap:8, alignItems:'center' }}>
               {mySubject && <div style={{ padding:'3px 10px', background:'rgba(108,138,255,.1)', border:'1px solid rgba(108,138,255,.2)', borderRadius:12, fontSize:11, color:'var(--accent)' }}>{mySubject}</div>}
-              <div className={styles.sessionBadge}>{T.session} {timer.sessionCount} / 4</div>
+              <div className={styles.sessionBadge}>{lang==='ja'?'セッション':'Session'} {timer.sessionCount} / 4</div>
             </div>
           </div>
 
@@ -957,7 +957,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
               onKeyDown={e => e.key==='Enter' && saveDailyMessage(dailyMsgInput)}
               style={{ flex:1, padding:'8px 12px', background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:8, color:'var(--text)', fontSize:12, fontFamily:'inherit', outline:'none' }}/>
             <button onClick={() => { saveDailyMessage(dailyMsgInput); setDailyMsgInput('') }}
-              style={{ padding:'8px 14px', background:'var(--accent)', border:'none', borderRadius:8, color:'#fff', fontSize:12, cursor:'pointer', fontFamily:'inherit' }}>{T.post}</button>
+              style={{ padding:'8px 14px', background:'var(--accent)', border:'none', borderRadius:8, color:'#fff', fontSize:12, cursor:'pointer', fontFamily:'inherit' }}>{lang==='ja'?'投稿':'Post'}</button>
           </div>
 
           {/* Classroom */}

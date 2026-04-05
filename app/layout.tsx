@@ -5,8 +5,8 @@ import { auth } from '@/auth'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: '自習室 JP — みんなで勉強しよう',
-  description: '日本人向けオンライン自習室。ポモドーロタイマー、カメラ共有、フレンドチャット、タスク共有機能付き。',
+  title: 'Study With Me JP | 自習室 — みんなで勉強しよう',
+  description: 'Study With Me JP — 日本人向けオンライン自習室。Study Stream・Study Together代替。ポモドーロタイマー、カメラ共有、フレンドチャット機能付き。Join our Japanese study with me community!',
   manifest: '/manifest.json',
 }
 
