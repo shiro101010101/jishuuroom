@@ -18,7 +18,8 @@ export async function POST(request: Request) {
     .eq('id', session.user.id)
     .single()
 
-  if (caller?.role !== 'admin') {
+  const callerData = caller as { role: string } | null
+  if (callerData?.role !== 'admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -29,11 +30,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'targetUserId と reason は必須です' }, { status: 400 })
   }
 
-  // Ban via DB function (bans profile + provider)
-  const { error } = await supabase.rpc('ban_user', {
-    target_user_id: targetUserId,
-    reason,
-  })
+  const { error } = await supabase
+    .from('profiles')
+    .update({ is_banned: true, ban_reason: reason })
+    .eq('id', targetUserId)
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
