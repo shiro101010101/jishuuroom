@@ -18,3 +18,5 @@
 .prog { flex:1; height:4px; background:var(--border); border-radius:2px; overflow:hidden; }
 .progFill { height:100%; background:#f87171; border-radius:2px; transition:width .5s; }
 .infoBox { background:rgba(108,138,255,.06); border:1px solid rgba(108,138,255,.15); border-radius:7px; padding:10px 12px; font-size:11px; color:var(--muted2); }
+
+.pinBox { background: var(--bg2); border: 1px solid var(--accent); border-radius: 8px; padding: 12px; margin-bottom: 10px; }

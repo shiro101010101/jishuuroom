@@ -126,7 +126,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
   const chatEndRef = useRef<HTMLDivElement>(null)
 
   // ── UI ──
-  const [activeTab, setActiveTab] = useState<'stats' | 'bgm' | 'activity' | 'schedule' | 'safety'>('stats')
+  const [activeTab, setActiveTab] = useState<'stats' | 'bgm' | 'activity' | 'schedule'>('stats')
 
   // ── Language ──
   const [lang, setLang] = useState<Lang>('ja')
@@ -406,7 +406,19 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
       return false
     }
   }
-  function stopBgmNodes() { bgmNodesRef.current.forEach((n: any) => { try { (n as OscillatorNode).stop?.(); n.disconnect() } catch {} }); bgmNodesRef.current = [] }
+  function stopBgmNodes() {
+    bgmNodesRef.current.forEach((n: any) => {
+      try {
+        if (typeof n.stop === 'function') n.stop()
+        if (typeof n.disconnect === 'function') n.disconnect()
+      } catch {}
+    })
+    bgmNodesRef.current = []
+    // Also suspend context to ensure silence
+    if (bgmCtxRef.current && bgmCtxRef.current.state === 'running') {
+      bgmCtxRef.current.suspend().catch(() => {})
+    }
+  }
   function makeNoise(ctx: AudioContext, gainNode: GainNode, type: 'rain'|'nature'|'cafe'|'white') {
     const bufSize = ctx.sampleRate * 3
     const buf = ctx.createBuffer(2, bufSize, ctx.sampleRate)
@@ -489,9 +501,9 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
   }
 
   async function playBgm(id: string) {
+    stopBgmNodes()
     const started = await initAudio()
     if (!started) { showToast('🔇 音声を開始できませんでした。もう一度クリックしてください'); return }
-    stopBgmNodes()
     const ctx = bgmCtxRef.current!; const gain = bgmGainRef.current!
     const track = BGM_TRACKS.find((t: any) => t.id === id)!
     const type = (track as any).type
@@ -744,7 +756,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
           <span>自習室 JP</span>
         </div>
         <div className={styles.headerCenter}>
-          <div className={styles.onlineBadge}><span className={styles.liveDot}/>{onlineCount}人が勉強中</div>
+          <div className={styles.onlineBadge}><span className={styles.liveDot}/>{onlineCount}{lang==='ja'?'人が勉強中':' studying now'}</div>
         </div>
         <div className={styles.headerRight}>
           <div className={styles.clock}>{currentTime}</div>
@@ -821,6 +833,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
               <div className={styles.secLabel}>✅ タスク管理</div>
               <TaskPanel userId={profile.id} roomId={room.id} tasks={tasks}
                 onAddTask={addTask} onCompleteTask={completeTask} onDeleteTask={deleteTask}
+                onUpdateShare={updateTaskShareLocal}
                 friends={friendsForTaskPanel}/>
             </div>
 
@@ -1062,10 +1075,10 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
           ) : (
             <>
               <div className={styles.srTabs}>
-                {(['stats','bgm','activity','schedule','safety'] as const).map((tab,i) => (
+                {(['stats','bgm','activity','schedule'] as const).map((tab,i) => (
                   <button key={tab} className={`${styles.srTab} ${activeTab===tab?styles.srTabActive:''}`} onClick={() => setActiveTab(tab)}>
-                    <span style={{ fontSize:13 }}><span style={{ fontSize:13 }}>{['📊','🎵','🔔','📅','🛡️'][i]}</span><span style={{ fontSize:9, display:'block', marginTop:1 }}>{['統計','BGM','通知','予定','安全'][i]}</span></span>
-                    <span style={{ fontSize:9, display:'block', marginTop:1 }}>{['統計','BGM','通知','予定','安全'][i]}</span>
+                    <span style={{ fontSize:13 }}>{['📊','🎵','🔔','📅'][i]}</span>
+                    <span style={{ fontSize:9, display:'block', marginTop:1 }}>{['統計','BGM','通知','予定'][i]}</span>
                   </button>
                 ))}
               </div>
@@ -1155,23 +1168,6 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                       </div>
                     ))}
                   </div>
-                )}
-
-                {activeTab==='safety' && (
-                  <SafetyPanel
-                    userId={profile.id}
-                    cameraOn={cameraOn}
-                    faceDetectEnabled={faceDetectEnabled}
-                    noFaceThreshold={noFaceThreshold}
-                    awayEnabled={awayEnabled}
-                    awayMinutes={awayMinutes}
-                    faceStatus={faceStatus}
-                    noFaceSeconds={noFaceSeconds}
-                    onFaceDetectChange={setFaceDetectEnabled}
-                    onNoFaceThresholdChange={setNoFaceThreshold}
-                    onAwayEnabledChange={setAwayEnabled}
-                    onAwayMinutesChange={setAwayMinutes}
-                  />
                 )}
 
                 {activeTab==='schedule' && (

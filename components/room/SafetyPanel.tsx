@@ -19,12 +19,6 @@ type Props = {
   onAwayMinutesChange: (v: number) => void
 }
 
-const WORD_FILTERS = [
-  '死ね', 'バカ', 'アホ', 'きもい', 'うざい', '消えろ', 'クソ', 'ゴミ', 'カス',
-  'えっち', 'エッチ', 'セックス', 'おっぱい', 'ヌード', '裸', 'エロ', '18禁',
-  'キモい', 'デブ', 'ブス',
-]
-
 export default function SafetyPanel({
   userId, cameraOn,
   faceDetectEnabled, noFaceThreshold,
@@ -38,6 +32,11 @@ export default function SafetyPanel({
   const [notifyMethod, setNotifyMethod] = useState<'email' | 'none'>('none')
   const [saved, setSaved] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [pin, setPin] = useState('')
+  const [savedPin, setSavedPin] = useState('')
+  const [pinInput, setPinInput] = useState('')
+  const [pinVerified, setPinVerified] = useState(false)
+  const [pinError, setPinError] = useState(false)
 
   useEffect(() => {
     const load = async () => {
@@ -49,6 +48,9 @@ export default function SafetyPanel({
       if (data) {
         setParentEmail(data.parent_email || '')
         setNotifyMethod(data.notify_method || 'none')
+        setSavedPin(data.parent_pin || '')
+        if (data.parent_pin) setPinVerified(false)
+        else setPinVerified(true)
       }
     }
     load()
@@ -59,6 +61,7 @@ export default function SafetyPanel({
     await (supabase as any).from('profiles').update({
       parent_email: parentEmail || null,
       notify_method: notifyMethod,
+      parent_pin: pin || savedPin || null,
     }).eq('id', userId)
     setSaving(false)
     setSaved(true)
@@ -170,15 +173,6 @@ export default function SafetyPanel({
             </div>
             <span className={styles.badge} style={{ background:'rgba(52,211,153,.12)', color:'#34d399' }}>常時ON</span>
           </div>
-          <div className={styles.cardBody}>
-            <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
-              {WORD_FILTERS.map(w => (
-                <span key={w} style={{ padding:'2px 7px', borderRadius:8, background:'rgba(248,113,113,.1)', color:'#f87171', fontSize:10, border:'1px solid rgba(248,113,113,.2)' }}>
-                  {w}
-                </span>
-              ))}
-            </div>
-          </div>
         </div>
 
         {/* 操作なし検出（折りたたみ） */}
@@ -217,9 +211,41 @@ export default function SafetyPanel({
 
       {/* ── 保護者通知 ── */}
       <div className={styles.section}>
-        <div className={styles.sectionTitle}>👨‍👩‍👧 保護者への通知 <span style={{ fontSize:10, fontWeight:400, color:'var(--muted)' }}>（オプション）</span></div>
+        <div className={styles.sectionTitle}>👨‍👩‍👧 保護者への通知 <span style={{ fontSize:10, fontWeight:400, color:'var(--muted)' }}>（オプション・PIN保護）</span></div>
 
-        <div className={styles.row}>
+        {/* PIN verification */}
+        {savedPin && !pinVerified && (
+          <div className={styles.pinBox}>
+            <div style={{ fontSize:12, color:'var(--muted2)', marginBottom:8 }}>🔐 設定を変更するにはPINを入力してください</div>
+            <div style={{ display:'flex', gap:6 }}>
+              <input type="password" maxLength={4} value={pinInput}
+                onChange={e => { setPinInput(e.target.value); setPinError(false) }}
+                placeholder="4桁PIN"
+                style={{ width:80, padding:'6px 10px', background:'var(--bg2)', border:`1px solid ${pinError?'#f87171':'var(--border)'}`, borderRadius:6, color:'var(--text)', fontSize:14, textAlign:'center', letterSpacing:4, fontFamily:'inherit', outline:'none' }} />
+              <button onClick={() => {
+                if (pinInput === savedPin) { setPinVerified(true); setPinInput('') }
+                else { setPinError(true); setPinInput('') }
+              }} style={{ padding:'6px 14px', background:'var(--accent)', border:'none', borderRadius:6, color:'#fff', fontSize:12, cursor:'pointer', fontFamily:'inherit' }}>
+                確認
+              </button>
+            </div>
+            {pinError && <div style={{ fontSize:11, color:'#f87171', marginTop:4 }}>PINが違います</div>}
+          </div>
+        )}
+
+        {!savedPin && (
+          <div className={styles.row}>
+            <span className={styles.label}>🔐 PINを設定</span>
+            <input type="password" maxLength={4} value={pin}
+              onChange={e => setPin(e.target.value)}
+              placeholder="4桁（任意）"
+              style={{ width:100, padding:'5px 10px', background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:6, color:'var(--text)', fontSize:14, textAlign:'center', letterSpacing:4, fontFamily:'inherit', outline:'none' }} />
+          </div>
+        )}
+
+        {(pinVerified || !savedPin) && (
+          <div>
+          <div className={styles.row}>
           <span className={styles.label}>通知方法</span>
           <div style={{ display:'flex', gap:6 }}>
             {(['none','email'] as const).map(m => (
@@ -259,6 +285,8 @@ export default function SafetyPanel({
               {saving ? '保存中...' : saved ? '✅ 保存しました！' : '保存する'}
             </button>
           </>
+        )}
+        </div>
         )}
       </div>
 

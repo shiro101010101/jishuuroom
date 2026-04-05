@@ -83,6 +83,7 @@ export const translations = {
   en: {
     // Header
     online: ' studying now',
+    appName: '自習室 JP',
     logout: 'Log out',
     // Timer
     timerTitle: 'Pomodoro Timer',
