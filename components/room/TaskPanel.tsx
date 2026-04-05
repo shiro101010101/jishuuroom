@@ -40,9 +40,9 @@ export default function TaskPanel({
   function ShareToggle({ task }: { task: Task & { share_scope?: string } }) {
     const scope = (task.share_scope || 'private') as 'private' | 'friends' | 'room'
     const options: { value: 'private' | 'friends' | 'room'; label: string; icon: string }[] = [
-      { value: 'private', label: '非公開', icon: '🔒' },
-      { value: 'friends', label: 'フレンド', icon: '👥' },
-      { value: 'room', label: 'ルーム全体', icon: '🏠' },
+      { value: 'private', label: '🔒 非公開（自分のみ）', icon: '🔒' },
+      { value: 'friends', label: '👥 フレンドに公開', icon: '👥' },
+      { value: 'room', label: '🏠 ルーム全員に公開', icon: '🏠' },
     ]
     return (
       <div className={styles.shareToggle}>

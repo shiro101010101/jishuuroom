@@ -81,7 +81,10 @@ export default function SafetyPanel({
             <span style={{ fontSize:18 }}>📱</span>
             <div>
               <div className={styles.cardTitle}>別タブ移動検出</div>
-              <div className={styles.cardDesc}>タイマー中に別のタブやアプリに移動すると即座に警告が表示されます</div>
+              <div className={styles.cardDesc}>
+                ブラウザの「タブ切り替え」や「別ウィンドウへの移動」を検知します。
+                同じタブ内での操作（本を読む・ノートを書くなど）は検出されません
+              </div>
             </div>
             <span className={styles.badge} style={{ background:'rgba(52,211,153,.12)', color:'#34d399' }}>常時ON</span>
           </div>
@@ -93,8 +96,10 @@ export default function SafetyPanel({
             <div>
               <div className={styles.cardTitle}>顔検出</div>
               <div className={styles.cardDesc}>
-                カメラに顔が映っていない時間が続くと警告。
-                トイレ・お茶など短い席外しは設定時間内なら問題なし
+                カメラ映像から肌色ピクセルを検出して顔の有無を判定します。
+                顔が映っていない時間が設定時間を超えると警告。
+                トイレ・お茶・ストレッチなどは時間内なら問題なし。
+                データは外部に送信されません🔒
               </div>
             </div>
             <span className={styles.badge} style={{
@@ -158,7 +163,10 @@ export default function SafetyPanel({
             <span style={{ fontSize:18 }}>🚫</span>
             <div>
               <div className={styles.cardTitle}>不適切ワードフィルター</div>
-              <div className={styles.cardDesc}>チャット・今日の一言に以下の言葉が含まれると送信がブロックされます</div>
+              <div className={styles.cardDesc}>
+                暴言・性的表現・外見差別などの言葉を自動検知。
+                送信前にブロックされるため相手には届きません
+              </div>
             </div>
             <span className={styles.badge} style={{ background:'rgba(52,211,153,.12)', color:'#34d399' }}>常時ON</span>
           </div>

@@ -1064,7 +1064,8 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
               <div className={styles.srTabs}>
                 {(['stats','bgm','activity','schedule','safety'] as const).map((tab,i) => (
                   <button key={tab} className={`${styles.srTab} ${activeTab===tab?styles.srTabActive:''}`} onClick={() => setActiveTab(tab)}>
-                    {['📊','🎵','🔔','📅','🛡️'][i]}
+                    <span style={{ fontSize:13 }}>{['📊','🎵','🔔','📅','🛡️'][i]}</span>
+                    <span style={{ fontSize:9, display:'block', marginTop:1 }}>{['統計','BGM','通知','予定','安全'][i]}</span>
                   </button>
                 ))}
               </div>
