@@ -20,3 +20,5 @@
 .infoBox { background:rgba(108,138,255,.06); border:1px solid rgba(108,138,255,.15); border-radius:7px; padding:10px 12px; font-size:11px; color:var(--muted2); }
 
 .pinBox { background: var(--bg2); border: 1px solid var(--accent); border-radius: 8px; padding: 12px; margin-bottom: 10px; }
+
+.card { background: #1a1d27; border: 1px solid #2d3148; border-radius: 10px; overflow: hidden; transition: border-color .2s; }

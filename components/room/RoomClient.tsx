@@ -1214,6 +1214,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                     awayMinutes={awayMinutes}
                     faceStatus={faceStatus}
                     noFaceSeconds={noFaceSeconds}
+                    lang={lang}
                     onFaceDetectChange={setFaceDetectEnabled}
                     onNoFaceThresholdChange={setNoFaceThreshold}
                     onAwayEnabledChange={setAwayEnabled}
