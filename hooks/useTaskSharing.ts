@@ -125,7 +125,9 @@ export function useTaskSharing(userId: string, roomId: string) {
       .update({ is_shared: scope !== 'private', share_scope: scope })
       .eq('id', taskId)
       .eq('user_id', userId)
-  }, [userId])
+    // Re-fetch to update UI
+    fetchSharedTasks()
+  }, [userId, fetchSharedTasks])
 
   // ペアリクエストを送る
   const requestPair = useCallback(async (partnerId: string) => {
