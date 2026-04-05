@@ -18,8 +18,8 @@ export async function POST(request: Request) {
     .eq('id', session.user.id)
     .single()
 
-  const callerData = caller as { role: string } | null
-  if (callerData?.role !== 'admin') {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if ((caller as any)?.role !== 'admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -30,7 +30,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'targetUserId と reason は必須です' }, { status: 400 })
   }
 
-  const { error } = await supabase
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase as any)
     .from('profiles')
     .update({ is_banned: true, ban_reason: reason })
     .eq('id', targetUserId)
