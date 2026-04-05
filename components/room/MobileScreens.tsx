@@ -90,6 +90,7 @@ export default function MobileScreens({
   onFaceDetectChange, onNoFaceThresholdChange,
   onAwayEnabledChange, onAwayMinutesChange,
   cameraOnForSafety,
+  userId,
 }: Props) {
   const router = useRouter()
   const [quote, setQuote] = useState(QUOTES[0])
@@ -326,6 +327,26 @@ export default function MobileScreens({
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Notification settings */}
+        <div style={{ padding:'0 0 8px' }}>
+          <div className={styles.secLabel}>📨 {lang==='ja'?'離席検出の通知先':'Alert Recipient'}</div>
+          <SafetyPanel
+            userId={userId}
+            cameraOn={cameraOnForSafety}
+            faceDetectEnabled={faceDetectEnabled}
+            noFaceThreshold={noFaceThreshold}
+            awayEnabled={awayEnabled}
+            awayMinutes={awayMinutes}
+            faceStatus={faceStatus}
+            noFaceSeconds={noFaceSeconds}
+            lang={lang}
+            onFaceDetectChange={onFaceDetectChange}
+            onNoFaceThresholdChange={onNoFaceThresholdChange}
+            onAwayEnabledChange={onAwayEnabledChange}
+            onAwayMinutesChange={onAwayMinutesChange}
+          />
         </div>
 
         {/* Room list */}

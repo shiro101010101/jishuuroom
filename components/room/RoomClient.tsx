@@ -1371,6 +1371,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
           onAwayEnabledChange={setAwayEnabled}
           onAwayMinutesChange={setAwayMinutes}
           cameraOnForSafety={cameraOn}
+          userId={profile.id}
         />
       </div>
 
