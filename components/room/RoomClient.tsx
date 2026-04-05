@@ -296,8 +296,20 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
   }
 
   async function addTask(title: string) {
-    const { data } = await (supabase as any).from('tasks').insert({ user_id: profile.id, title }).select().single()
+    const { data } = await (supabase as any).from('tasks').insert({ user_id: profile.id, title, is_shared: false, share_scope: 'private' }).select().single()
     if (data) { setTasks(prev => [data, ...prev]); setCurrentTask(data.title) }
+  }
+
+  // タスク共有スコープをローカルでも更新
+  async function updateTaskShareLocal(taskId: string, scope: 'private' | 'friends' | 'room') {
+    await (supabase as any).from('tasks')
+      .update({ is_shared: scope !== 'private', share_scope: scope })
+      .eq('id', taskId)
+      .eq('user_id', profile.id)
+    // Update local state immediately
+    setTasks(prev => prev.map((t: any) =>
+      t.id === taskId ? { ...t, is_shared: scope !== 'private', share_scope: scope } : t
+    ))
   }
   async function completeTask(task: Task) {
     await (supabase as any).from('tasks').update({ completed: true, completed_at: new Date().toISOString() }).eq('id', task.id)
@@ -376,16 +388,22 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
   }
 
   // ── BGM ──
-  async function initAudio() {
-    if (!bgmCtxRef.current) {
-      bgmCtxRef.current = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)()
-      bgmGainRef.current = bgmCtxRef.current.createGain()
-      bgmGainRef.current.gain.value = volume
-      bgmGainRef.current.connect(bgmCtxRef.current.destination)
-    }
-    // Resume if suspended (browser blocks autoplay until user gesture)
-    if (bgmCtxRef.current.state === 'suspended') {
-      await bgmCtxRef.current.resume()
+  async function initAudio(): Promise<boolean> {
+    try {
+      if (!bgmCtxRef.current) {
+        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
+        bgmCtxRef.current = new AudioCtx()
+        bgmGainRef.current = bgmCtxRef.current.createGain()
+        bgmGainRef.current.gain.value = volume
+        bgmGainRef.current.connect(bgmCtxRef.current.destination)
+      }
+      if (bgmCtxRef.current.state === 'suspended') {
+        await bgmCtxRef.current.resume()
+      }
+      return bgmCtxRef.current.state === 'running'
+    } catch(e) {
+      console.error('Audio init failed:', e)
+      return false
     }
   }
   function stopBgmNodes() { bgmNodesRef.current.forEach((n: any) => { try { (n as OscillatorNode).stop?.(); n.disconnect() } catch {} }); bgmNodesRef.current = [] }
@@ -471,7 +489,9 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
   }
 
   async function playBgm(id: string) {
-    await initAudio(); stopBgmNodes()
+    const started = await initAudio()
+    if (!started) { showToast('🔇 音声を開始できませんでした。もう一度クリックしてください'); return }
+    stopBgmNodes()
     const ctx = bgmCtxRef.current!; const gain = bgmGainRef.current!
     const track = BGM_TRACKS.find((t: any) => t.id === id)!
     const type = (track as any).type

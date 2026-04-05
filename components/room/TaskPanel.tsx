@@ -12,11 +12,12 @@ type Props = {
   onAddTask: (title: string) => Promise<void>
   onCompleteTask: (task: Task) => Promise<void>
   onDeleteTask: (taskId: string) => Promise<void>
+  onUpdateShare?: (taskId: string, scope: 'private' | 'friends' | 'room') => Promise<void>
   friends: { id: string; display_name: string; avatar_url: string | null }[]
 }
 
 export default function TaskPanel({
-  userId, roomId, tasks, onAddTask, onCompleteTask, onDeleteTask, friends
+  userId, roomId, tasks, onAddTask, onCompleteTask, onDeleteTask, onUpdateShare, friends
 }: Props) {
   const [input, setInput] = useState('')
   const [activeTab, setActiveTab] = useState<'mine' | 'shared'>('mine')
@@ -49,7 +50,7 @@ export default function TaskPanel({
           <button
             key={opt.value}
             className={`${styles.shareBtn} ${scope === opt.value ? styles.shareBtnActive : ''}`}
-            onClick={e => { e.stopPropagation(); updateTaskShare(task.id, opt.value) }}
+            onClick={e => { e.stopPropagation(); onUpdateShare ? onUpdateShare(task.id, opt.value) : updateTaskShare(task.id, opt.value) }}
             title={opt.label}
           >
             {opt.icon}
