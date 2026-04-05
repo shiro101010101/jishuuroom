@@ -126,7 +126,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
   const chatEndRef = useRef<HTMLDivElement>(null)
 
   // ── UI ──
-  const [activeTab, setActiveTab] = useState<'stats' | 'bgm' | 'activity' | 'schedule'>('stats')
+  const [activeTab, setActiveTab] = useState<'stats' | 'bgm' | 'activity' | 'schedule' | 'safety'>('stats')
 
   // ── Language ──
   const [lang, setLang] = useState<Lang>('ja')
@@ -1168,6 +1168,23 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                       </div>
                     ))}
                   </div>
+                )}
+
+                {activeTab==='safety' && (
+                  <SafetyPanel
+                    userId={profile.id}
+                    cameraOn={cameraOn}
+                    faceDetectEnabled={faceDetectEnabled}
+                    noFaceThreshold={noFaceThreshold}
+                    awayEnabled={awayEnabled}
+                    awayMinutes={awayMinutes}
+                    faceStatus={faceStatus}
+                    noFaceSeconds={noFaceSeconds}
+                    onFaceDetectChange={setFaceDetectEnabled}
+                    onNoFaceThresholdChange={setNoFaceThreshold}
+                    onAwayEnabledChange={setAwayEnabled}
+                    onAwayMinutesChange={setAwayMinutes}
+                  />
                 )}
 
                 {activeTab==='schedule' && (
