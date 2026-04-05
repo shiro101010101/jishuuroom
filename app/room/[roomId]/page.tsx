@@ -33,7 +33,12 @@ export default async function RoomPage({ params }: { params: Promise<{ roomId: s
   if (!profile || (profile as any).is_banned) redirect('/banned')
 
   const { data: room } = await supabase.from('rooms').select('*').eq('id', roomId).single()
-  if (!room) redirect('/room/00000000-0000-0000-0000-000000000001')
+  if (!room) {
+    // Find first available room
+    const { data: firstRoom } = await supabase.from('rooms').select('id').eq('is_private', false).order('name').limit(1).single()
+    if (firstRoom) redirect('/room/' + (firstRoom as any).id)
+    else redirect('/')
+  }
 
   const { data: allRooms } = await supabase.from('rooms').select('*').eq('is_private', false).order('name')
   const { data: members } = await supabase.from('room_members').select('*, profiles(display_name, avatar_url, study_streak, subject)').eq('room_id', roomId)
