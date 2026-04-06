@@ -172,26 +172,46 @@ export function useFriends(userId: string) {
 
   useEffect(() => {
     fetchFriends()
-    const ch = supabase
+    const ch = (supabase as any)
       .channel(`friends:${userId}`)
       .on('postgres_changes', {
         event: '*', schema: 'public', table: 'friendships',
         filter: `addressee_id=eq.${userId}`,
-      }, () => fetchFriends())
+      }, (payload: any) => {
+        console.log('📨 friendship change (addressee):', payload)
+        fetchFriends()
+      })
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'friendships',
+        filter: `requester_id=eq.${userId}`,
+      }, (payload: any) => {
+        console.log('📨 friendship change (requester):', payload)
+        fetchFriends()
+      })
       .on('postgres_changes', {
         event: 'INSERT', schema: 'public', table: 'messages',
         filter: `receiver_id=eq.${userId}`,
       }, () => fetchFriends())
-      .subscribe()
+      .subscribe((status: any) => console.log('friends channel:', status))
     return () => { try { supabase.getChannels().find((c:any)=>c===ch)?.unsubscribe() } catch{} }
   }, [userId])
 
   const sendFriendRequest = useCallback(async (targetId: string) => {
+    // Check if already exists
+    const { data: existing } = await (supabase as any).from('friendships')
+      .select('id, status')
+      .or(`and(requester_id.eq.${userId},addressee_id.eq.${targetId}),and(requester_id.eq.${targetId},addressee_id.eq.${userId})`)
+      .single()
+    if (existing) {
+      console.log('Already friends or pending:', existing.status)
+      return existing.status
+    }
     const { error } = await (supabase as any).from('friendships').insert({
       requester_id: userId, addressee_id: targetId, status: 'pending',
     })
     if (error) console.error('❌ friend request error:', error)
     else { console.log('✅ friend request sent'); fetchFriends() }
+    return 'sent'
   }, [userId, fetchFriends])
 
   const acceptFriendRequest = useCallback(async (friendshipId: string) => {

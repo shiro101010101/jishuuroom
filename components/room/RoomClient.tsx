@@ -1121,15 +1121,20 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                       <div className={styles.seatActions}>
                         <button title={lang==='ja'?'リアクション':'React'} onClick={() => setReactionTarget({ userId:m.user_id, name:mp.display_name })} style={{ background:'transparent', border:'none', cursor:'pointer', fontSize:11 }}>😊</button>
                         <button title={isPinnedUser?(lang==='ja'?'ピン解除':'Unpin'):(lang==='ja'?'ピン留め':'Pin')} onClick={() => togglePin(m.user_id)} style={{ background:'transparent', border:'none', cursor:'pointer', fontSize:11, opacity:isPinnedUser?1:.5 }}>📌</button>
-                        {!displayFriends.some((f:any) => f.addressee_id === m.user_id) && (
+                        {displayFriends.some((f:any) => f.addressee_id === m.user_id) ? (
+                          <span title={lang==='ja'?'フレンド':'Friend'} style={{ fontSize:11 }}>✅</span>
+                        ) : pendingIn.some((p:any) => p.requester_id === m.user_id) ? (
+                          <span title={lang==='ja'?'申請中':'Pending'} style={{ fontSize:11 }}>⏳</span>
+                        ) : (
                           <button title={lang==='ja'?'フレンド申請':'Add Friend'} onClick={async () => {
-                            await sendFriendRequest(m.user_id)
-                            showToast(lang==='ja'?`👋 ${mp.display_name}さんにフレンド申請しました！`:`👋 Friend request sent to ${mp.display_name}!`)
-                            addNotif('👋', lang==='ja'?`${mp.display_name}さんにフレンド申請しました`:`Friend request sent to ${mp.display_name}`)
+                            const result = await sendFriendRequest(m.user_id)
+                            if (result === 'sent') {
+                              showToast(lang==='ja'?`👋 ${mp.display_name}さんにフレンド申請しました！`:`👋 Friend request sent to ${mp.display_name}!`)
+                              addNotif('👋', lang==='ja'?`${mp.display_name}さんにフレンド申請しました`:`Friend request sent to ${mp.display_name}`)
+                            } else {
+                              showToast(lang==='ja'?'既に申請済みです':'Already requested')
+                            }
                           }} style={{ background:'transparent', border:'none', cursor:'pointer', fontSize:11 }}>➕</button>
-                        )}
-                        {displayFriends.some((f:any) => f.addressee_id === m.user_id) && (
-                          <span style={{ fontSize:10 }}>✅</span>
                         )}
                         <button title={lang==='ja'?'報告':'Report'} onClick={() => setReportModal({ userId:m.user_id, name:mp.display_name })} style={{ background:'transparent', border:'none', cursor:'pointer', fontSize:11 }}>⚠️</button>
                       </div>
