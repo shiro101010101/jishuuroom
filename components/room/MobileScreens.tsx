@@ -204,7 +204,7 @@ export default function MobileScreens({
           <button
             className={`${styles.camToggle} ${cameraOn ? styles.camToggleOn : ''}`}
             onClick={onToggleCamera}>
-            📷 {cameraOn ? (lang==='ja'?'カメラON':'Cam ON') : (lang==='ja'?'カメラOFF':'Cam OFF')}
+            📷 {cameraOn ? (lang==='ja'?'カメラON':'Camera ON') : (lang==='ja'?'カメラOFF':'Camera OFF')}
           </button>
           <span className={styles.micBadge}>🔇 {lang==='ja'?'マイク禁止':'Mic Off'}</span>
           <button className={styles.leaveBtn} onClick={onLeaveRoom}>{lang==='ja'?'退室':'Leave'}</button>
@@ -217,12 +217,12 @@ export default function MobileScreens({
         {/* Camera grid 2-col */}
         <div>
           <div className={styles.secLabel}>🎥 {room.name}</div>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:8 }}>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:8, padding:'0 4px' }}>
 
             {/* My card */}
             <div className={`${styles.camCard} ${styles.camCardYou}`}>
               {localStream
-                ? <video className={styles.camVideo} style={{ aspectRatio:"4/3", objectFit:"cover", width:"100%", height:"auto" }}
+                ? <video className={styles.camVideo} style={{ aspectRatio:"3/4", objectFit:"cover", width:"100%", height:"auto" }}
                     ref={v => { if (v && v.srcObject !== localStream) v.srcObject = localStream }}
                     autoPlay muted playsInline />
                 : <div className={styles.camOff}>
@@ -247,7 +247,7 @@ export default function MobileScreens({
                 <div key={m.id} className={`${styles.camCard} ${away ? styles.camCardAway : ''}`}>
                   {away && <div className={styles.awayTag}>{lang==='ja'?'😴 席外':'😴 Away'}</div>}
                   {rs
-                    ? <video className={styles.camVideo} style={{ aspectRatio:"4/3", objectFit:"cover", width:"100%", height:"auto" }}
+                    ? <video className={styles.camVideo} style={{ aspectRatio:"3/4", objectFit:"cover", width:"100%", height:"auto" }}
                         ref={v => { if (v && v.srcObject !== rs) v.srcObject = rs }}
                         autoPlay playsInline />
                     : <div className={styles.camOff}>
@@ -297,7 +297,7 @@ export default function MobileScreens({
                     <option value={600}>{lang==='ja'?'10分':'10min'}</option>
                   </select>
                 )}
-                {!cameraOnForSafety && <span style={{ fontSize:11, color:'var(--muted)' }}>{lang==='ja'?'カメラOFF':'Cam OFF'}</span>}
+                {!cameraOnForSafety && <span style={{ fontSize:11, color:'var(--muted)' }}>{lang==='ja'?'カメラOFF':'Camera OFF'}</span>}
               </div>
             </div>
             {/* Face status */}
@@ -351,7 +351,7 @@ export default function MobileScreens({
 
         {/* Room list */}
         <div>
-          <div className={styles.secLabel}>🏠 ルーム一覧</div>
+          <div className={styles.secLabel}>{lang==='ja'?'🏠 ルーム一覧':'🏠 Rooms'}</div>
           <div className={styles.roomList}>
             {allRooms.map(r => (
               <div key={r.id}
@@ -362,7 +362,7 @@ export default function MobileScreens({
                   <div className={styles.roomName}>{r.name}</div>
                   <div className={styles.roomDesc}>{r.description}</div>
                 </div>
-                {r.id === room.id && <span className={styles.inRoomBadge}>参加中</span>}
+                {r.id === room.id && <span className={styles.inRoomBadge}>{lang==='ja'?'参加中':'In Room'}</span>}
               </div>
             ))}
           </div>
@@ -380,7 +380,7 @@ export default function MobileScreens({
         {/* Pending requests */}
         {pendingIn.length > 0 && (
           <div className={styles.section}>
-            <div className={styles.secLabel}>📨 フレンド申請 ({pendingIn.length})</div>
+            <div className={styles.secLabel}>📨 {lang==='ja'?'📨 フレンド申請':'📨 Friend Requests'} ({pendingIn.length})</div>
             {pendingIn.map(req => {
               const fp = req.profiles as Profile
               return (
@@ -392,7 +392,7 @@ export default function MobileScreens({
                   </div>
                   <div className={styles.friendReqInfo}>
                     <div className={styles.friendReqName}>{fp.display_name}</div>
-                    <div className={styles.friendReqMeta}>フレンド申請が届いています</div>
+                    <div className={styles.friendReqMeta}>{lang==='ja'?'フレンド申請が届いています':'Friend request received'}</div>
                   </div>
                   <button className={styles.acceptBtn}
                     onClick={() => onAcceptFriend(req.id)}>{lang==='ja'?'承認':'Accept'}</button>
@@ -405,7 +405,7 @@ export default function MobileScreens({
         {/* Friends list */}
         <div className={styles.section}>
           <div className={styles.secLabel}>
-            👥 フレンド ({friends.length})
+            {lang==='ja'?'👥 フレンド':'👥 Friends'} ({friends.length})
           </div>
           {friends.length === 0 && (
             <div className={styles.emptyState}>
@@ -454,7 +454,7 @@ export default function MobileScreens({
     <div className={`${styles.screen} ${activeScreen === 'stats' ? styles.screenActive : ''}`}>
       <div className={styles.scroll}>
 
-        <div className={styles.secLabel}>📊 本日の統計</div>
+        <div className={styles.secLabel}>{lang==='ja'?'📊 本日の統計':'📊 Today'}</div>
         <div className={styles.statGrid}>
           <div className={styles.statCard}>
             <div className={styles.statVal}>{fmtStudy(todaySeconds)}</div>
@@ -528,7 +528,7 @@ export default function MobileScreens({
         </div>
 
         <div className={styles.section}>
-          <div className={styles.secLabel}>🔔 通知</div>
+          <div className={styles.secLabel}>{lang==='ja'?'🔔 通知':'🔔 Notifications'}</div>
           {notifications.slice(0, 6).map((n, i) => (
             <div key={i} className={styles.notifItem}>
               <span style={{ fontSize: 14 }}>{n.icon}</span>

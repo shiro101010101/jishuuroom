@@ -50,7 +50,7 @@
 .camCard { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; position: relative; aspect-ratio: 3/4; }
 .camCardYou { border-color: var(--accent); }
 .camCardAway { border-color: var(--warn); }
-.camVideo { width: 100%; height: 100%; object-fit: cover; display: block; }
+.camVideo { width: 100%; height: 100%; object-fit: cover; display: block; position: absolute; inset: 0; }
 .camOff { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--bg3); }
 .camAv { width: 56px; height: 56px; border-radius: 50%; background: rgba(108,138,255,.15); color: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; overflow: hidden; }
 .camName { position: absolute; bottom: 0; left: 0; right: 0; padding: 4px 6px; background: linear-gradient(transparent,rgba(0,0,0,.8)); display: flex; align-items: center; justify-content: space-between; }
