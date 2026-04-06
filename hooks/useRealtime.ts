@@ -23,11 +23,16 @@ export function useRoomRealtime(roomId: string, userId: string) {
 
   // Join on mount
   useEffect(() => {
-    (supabase as any).from('room_members').upsert(
-      { room_id: roomId, user_id: userId, status: 'studying' },
-      { onConflict: 'room_id,user_id' }
-    )
-    fetchMembers()
+    const joinRoom = async () => {
+      const { error } = await (supabase as any).from('room_members').upsert(
+        { room_id: roomId, user_id: userId, status: 'studying', camera_on: false },
+        { onConflict: 'room_id,user_id' }
+      )
+      if (error) console.error('❌ join room error:', error)
+      else console.log('✅ joined room_members')
+      await fetchMembers()
+    }
+    joinRoom()
 
     // Increment study_seconds every 60s while page is open
     studyIntervalRef.current = setInterval(async () => {
