@@ -1124,7 +1124,8 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                         {!displayFriends.some((f:any) => f.addressee_id === m.user_id) && (
                           <button title={lang==='ja'?'フレンド申請':'Add Friend'} onClick={async () => {
                             await sendFriendRequest(m.user_id)
-                            showToast(lang==='ja'?`👋 ${mp.display_name}さんにフレンド申請しました`:`👋 Friend request sent to ${mp.display_name}`)
+                            showToast(lang==='ja'?`👋 ${mp.display_name}さんにフレンド申請しました！`:`👋 Friend request sent to ${mp.display_name}!`)
+                            addNotif('👋', lang==='ja'?`${mp.display_name}さんにフレンド申請しました`:`Friend request sent to ${mp.display_name}`)
                           }} style={{ background:'transparent', border:'none', cursor:'pointer', fontSize:11 }}>➕</button>
                         )}
                         {displayFriends.some((f:any) => f.addressee_id === m.user_id) && (
