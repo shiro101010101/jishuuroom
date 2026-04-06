@@ -13,16 +13,17 @@ export function useRoomRealtime(roomId: string, userId: string) {
   const studyIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   const fetchMembers = useCallback(async () => {
-    const { data } = await supabase
+    const { data, error } = await (supabase as any)
       .from('room_members')
-      .select('*, profiles(display_name, avatar_url)')
+      .select('*, profiles(display_name, avatar_url, study_streak, subject)')
       .eq('room_id', roomId)
+    if (error) console.error('fetchMembers error:', error)
     if (data) setMembers(data as typeof members)
   }, [roomId])
 
   // Join on mount
   useEffect(() => {
-    supabase.from('room_members').upsert(
+    (supabase as any).from('room_members').upsert(
       { room_id: roomId, user_id: userId, status: 'studying' },
       { onConflict: 'room_id,user_id' }
     )
@@ -30,7 +31,7 @@ export function useRoomRealtime(roomId: string, userId: string) {
 
     // Increment study_seconds every 60s while page is open
     studyIntervalRef.current = setInterval(async () => {
-      await supabase.rpc('update_last_seen')
+      await (supabase as any).rpc('update_last_seen')
       // raw SQL increment via RPC
       await supabase
         .from('room_members')
@@ -42,7 +43,7 @@ export function useRoomRealtime(roomId: string, userId: string) {
     // Leave on unmount
     return () => {
       if (studyIntervalRef.current) clearInterval(studyIntervalRef.current)
-      supabase.from('room_members')
+      (supabase as any).from('room_members')
         .delete()
         .eq('room_id', roomId)
         .eq('user_id', userId)
@@ -66,7 +67,7 @@ export function useRoomRealtime(roomId: string, userId: string) {
     currentTask?: string,
     cameraOn?: boolean
   ) => {
-    await supabase.from('room_members')
+    await (supabase as any).from('room_members')
       .update({ status, current_task: currentTask ?? null, camera_on: cameraOn ?? false })
       .eq('room_id', roomId)
       .eq('user_id', userId)
@@ -106,7 +107,7 @@ export function useMessages(userId: string, friendId: string) {
         const msg = payload.new as Message
         if (msg.sender_id === friendId) {
           setMessages(prev => [...prev, msg])
-          supabase.from('messages').update({ is_read: true }).eq('id', msg.id)
+          (supabase as any).from('messages').update({ is_read: true }).eq('id', msg.id)
         }
       })
       .subscribe()
@@ -181,18 +182,18 @@ export function useFriends(userId: string) {
   }, [userId])
 
   const sendFriendRequest = useCallback(async (targetId: string) => {
-    await supabase.from('friendships').insert({
+    await (supabase as any).from('friendships').insert({
       requester_id: userId, addressee_id: targetId, status: 'pending',
     })
   }, [userId])
 
   const acceptFriendRequest = useCallback(async (friendshipId: string) => {
-    await supabase.from('friendships').update({ status: 'accepted' }).eq('id', friendshipId)
+    await (supabase as any).from('friendships').update({ status: 'accepted' }).eq('id', friendshipId)
     // Also create reverse friendship so both sides see each other
     const { data: req } = await supabase
       .from('friendships').select('requester_id,addressee_id').eq('id', friendshipId).single()
     if (req) {
-      await supabase.from('friendships').upsert({
+      await (supabase as any).from('friendships').upsert({
         requester_id: req.addressee_id, addressee_id: req.requester_id, status: 'accepted',
       }, { onConflict: 'requester_id,addressee_id' })
     }
@@ -200,8 +201,8 @@ export function useFriends(userId: string) {
   }, [userId, fetchFriends])
 
   const blockUser = useCallback(async (targetId: string) => {
-    await supabase.from('blocks').insert({ blocker_id: userId, blocked_id: targetId })
-    await supabase.from('friendships')
+    await (supabase as any).from('blocks').insert({ blocker_id: userId, blocked_id: targetId })
+    await (supabase as any).from('friendships')
       .update({ status: 'blocked' })
       .or(
         `and(requester_id.eq.${userId},addressee_id.eq.${targetId}),` +
@@ -211,7 +212,7 @@ export function useFriends(userId: string) {
   }, [userId, fetchFriends])
 
   const reportUser = useCallback(async (targetId: string, reason: string, details?: string) => {
-    await supabase.from('reports').insert({
+    await (supabase as any).from('reports').insert({
       reporter_id: userId, reported_id: targetId, reason, details,
     })
   }, [userId])
