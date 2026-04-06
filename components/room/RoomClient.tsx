@@ -84,7 +84,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
   const {
     dailyMessages, myMessage, reactions, showPinnedOnly, setShowPinnedOnly,
     mutualPinNotif, pinnedUserIds, REACTION_EMOJIS,
-    sendReaction, togglePin, saveDailyMessage, isPinned, getReactionsFor,
+    sendReaction, togglePin, saveDailyMessage, isPinned, getReactionsFor, sendFriendRequest,
   } = useInteractions(profile.id, room.id)
 
   // ── Stats ──
@@ -1094,9 +1094,18 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                       {memberSubject && <div style={{ textAlign:'center' }}><span style={{ display:'inline-block', padding:'1px 5px', borderRadius:3, fontSize:8, fontWeight:600, background:`${color}22`, color, marginTop:2 }}>{memberSubject}</span></div>}
                       {dm && <div style={{ background:'#0a1520', borderLeft:`2px solid ${color}`, borderRadius:'0 4px 4px 0', padding:'2px 5px', fontSize:8, color:'#64748b', marginTop:3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{dm.content}</div>}
                       <div className={styles.seatActions}>
-                        <button title="リアクション" onClick={() => setReactionTarget({ userId:m.user_id, name:mp.display_name })} style={{ background:'transparent', border:'none', cursor:'pointer', fontSize:11 }}>😊</button>
-                        <button title={isPinnedUser?'ピン解除':'ピン留め'} onClick={() => togglePin(m.user_id)} style={{ background:'transparent', border:'none', cursor:'pointer', fontSize:11, opacity:isPinnedUser?1:.5 }}>📌</button>
-                        <button title="報告" onClick={() => setReportModal({ userId:m.user_id, name:mp.display_name })} style={{ background:'transparent', border:'none', cursor:'pointer', fontSize:11 }}>⚠️</button>
+                        <button title={lang==='ja'?'リアクション':'React'} onClick={() => setReactionTarget({ userId:m.user_id, name:mp.display_name })} style={{ background:'transparent', border:'none', cursor:'pointer', fontSize:11 }}>😊</button>
+                        <button title={isPinnedUser?(lang==='ja'?'ピン解除':'Unpin'):(lang==='ja'?'ピン留め':'Pin')} onClick={() => togglePin(m.user_id)} style={{ background:'transparent', border:'none', cursor:'pointer', fontSize:11, opacity:isPinnedUser?1:.5 }}>📌</button>
+                        {!displayFriends.some((f:any) => f.addressee_id === m.user_id) && (
+                          <button title={lang==='ja'?'フレンド申請':'Add Friend'} onClick={async () => {
+                            await sendFriendRequest(m.user_id)
+                            showToast(lang==='ja'?`👋 ${mp.display_name}さんにフレンド申請しました`:`👋 Friend request sent to ${mp.display_name}`)
+                          }} style={{ background:'transparent', border:'none', cursor:'pointer', fontSize:11 }}>➕</button>
+                        )}
+                        {displayFriends.some((f:any) => f.addressee_id === m.user_id) && (
+                          <span style={{ fontSize:10 }}>✅</span>
+                        )}
+                        <button title={lang==='ja'?'報告':'Report'} onClick={() => setReportModal({ userId:m.user_id, name:mp.display_name })} style={{ background:'transparent', border:'none', cursor:'pointer', fontSize:11 }}>⚠️</button>
                       </div>
                     </div>
                   )

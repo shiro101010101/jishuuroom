@@ -133,7 +133,7 @@ export function useInteractions(userId: string, roomId: string) {
       return { success: false, error: `あと${mins}分後に送れます` }
     }
 
-    const { data, error } = await supabase.rpc('send_reaction', {
+    const { data, error } = await (supabase as any).rpc('send_reaction', {
       p_receiver_id: receiverId,
       p_room_id: roomId,
       p_emoji: emoji,
@@ -152,7 +152,7 @@ export function useInteractions(userId: string, roomId: string) {
 
   // ── Toggle pin ──
   const togglePin = useCallback(async (targetId: string) => {
-    const { data, error } = await supabase.rpc('toggle_pin', { p_target_id: targetId })
+    const { data, error } = await (supabase as any).rpc('toggle_pin', { p_target_id: targetId })
     if (error) return
     const result = data as { pinned: boolean; mutual: boolean }
     if (result.mutual) {
@@ -173,7 +173,7 @@ export function useInteractions(userId: string, roomId: string) {
   // ── Save daily message ──
   const saveDailyMessage = useCallback(async (content: string) => {
     if (!content.trim()) return
-    await supabase.from('daily_messages').upsert({
+    await (supabase as any).from('daily_messages').upsert({
       user_id: userId,
       room_id: roomId,
       content: content.trim(),
