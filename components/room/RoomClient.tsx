@@ -79,12 +79,12 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
   )
   const { members, updateStatus } = useRoomRealtime(room.id, profile.id)
   const displayMembers = members.length > 0 ? members : initialMembers
-  const { friends, pendingIn, unreadCounts, blockUser, reportUser, acceptFriendRequest } = useFriends(profile.id)
+  const { friends, pendingIn, unreadCounts, blockUser, reportUser, acceptFriendRequest, sendFriendRequest } = useFriends(profile.id)
   const displayFriends = friends.length > 0 ? friends : initialFriends
   const {
     dailyMessages, myMessage, reactions, showPinnedOnly, setShowPinnedOnly,
     mutualPinNotif, pinnedUserIds, REACTION_EMOJIS,
-    sendReaction, togglePin, saveDailyMessage, isPinned, getReactionsFor, sendFriendRequest,
+    sendReaction, togglePin, saveDailyMessage, isPinned, getReactionsFor,
   } = useInteractions(profile.id, room.id)
 
   // ── Stats ──
