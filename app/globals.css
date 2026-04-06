@@ -1,19 +1,19 @@
 /* app/globals.css */
 :root {
-  --bg: #0a0c10;
-  --bg2: #111318;
-  --bg3: #1a1d24;
-  --border: #252830;
-  --border2: #2e3340;
+  --bg: #0d0f14;
+  --bg2: #141720;
+  --bg3: #1e2130;
+  --border: #2d3148;
+  --border2: #363c55;
   --accent: #6c8aff;
   --accent2: #a78bfa;
   --accent3: #34d399;
   --warn: #f59e0b;
   --red: #f87171;
   --red2: #ef4444;
-  --text: #f1f5f9;
-  --muted: #64748b;
-  --muted2: #94a3b8;
+  --text: #f8fafc;
+  --muted: #7c8fad;
+  --muted2: #b0bfd4;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }

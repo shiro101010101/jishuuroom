@@ -79,7 +79,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
   )
   const { members, updateStatus } = useRoomRealtime(room.id, profile.id)
   const displayMembers = members.length > 0 ? members : initialMembers
-  const { friends, pendingIn, unreadCounts, blockUser, reportUser, acceptFriendRequest, sendFriendRequest } = useFriends(profile.id)
+  const { friends, pendingIn, unreadCounts, blockUser, reportUser, acceptFriendRequest, sendFriendRequest, newFriendRequest, setNewFriendRequest } = useFriends(profile.id)
   const displayFriends = friends.length > 0 ? friends : initialFriends
   const {
     dailyMessages, myMessage, reactions, showPinnedOnly, setShowPinnedOnly,
@@ -1013,9 +1013,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
             <div className={styles.micBadge}>{T.micBanned}</div>
             <div className={styles.ctrlInfo}>{T.noTalk}</div>
             <button className={`${styles.ctrlBtn} ${styles.ctrlBtnDanger}`} onClick={async () => {
-                // Leave room_members first
-                const supa = createClient()
-                await supa.from('room_members').delete().eq('room_id', room.id).eq('user_id', profile.id)
+                await (supabase as any).from('room_members').delete().eq('room_id', room.id).eq('user_id', profile.id)
                 router.push('/')
               }}>{T.leaveRoom}</button>
           </div>

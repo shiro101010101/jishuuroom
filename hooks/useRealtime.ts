@@ -34,6 +34,15 @@ export function useRoomRealtime(roomId: string, userId: string) {
     }
     joinRoom()
 
+    // Auto-leave when tab/window closes
+    const leaveRoom = () => {
+      navigator.sendBeacon(
+        `https://${process.env.NEXT_PUBLIC_SUPABASE_URL?.split('//')[1]}/rest/v1/room_members?room_id=eq.${roomId}&user_id=eq.${userId}`,
+        ''
+      )
+    }
+    window.addEventListener('beforeunload', leaveRoom)
+
     // Increment study_seconds every 60s while page is open
     studyIntervalRef.current = setInterval(async () => {
       await (supabase as any).rpc('update_last_seen')
@@ -48,7 +57,8 @@ export function useRoomRealtime(roomId: string, userId: string) {
     // Leave on unmount
     return () => {
       if (studyIntervalRef.current) clearInterval(studyIntervalRef.current)
-      (supabase as any).from('room_members')
+      window.removeEventListener('beforeunload', leaveRoom)
+      ;(supabase as any).from('room_members')
         .delete()
         .eq('room_id', roomId)
         .eq('user_id', userId)
