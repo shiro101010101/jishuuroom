@@ -897,6 +897,31 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
             {/* Friends */}
             <div>
               <div className={styles.secLabel}>{lang==='ja'?'👥 フレンド':'👥 Friends'}</div>
+
+              {/* Pending friend requests */}
+              {pendingIn.length > 0 && (
+                <div style={{ marginBottom:8 }}>
+                  {pendingIn.map((req: any) => {
+                    const rp = req.profiles
+                    return (
+                      <div key={req.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 10px', background:'rgba(108,138,255,.08)', border:'1px solid rgba(108,138,255,.3)', borderRadius:8, marginBottom:5 }}>
+                        <div style={{ width:28, height:28, borderRadius:'50%', background:'var(--accent)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:700, flexShrink:0, overflow:'hidden' }}>
+                          {rp?.avatar_url ? <img src={rp.avatar_url} width={28} height={28} style={{ borderRadius:'50%' }} alt=""/> : rp?.display_name?.[0]}
+                        </div>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontSize:12, fontWeight:600 }}>{rp?.display_name}</div>
+                          <div style={{ fontSize:10, color:'var(--muted)' }}>{lang==='ja'?'フレンド申請が届いています':'Friend request'}</div>
+                        </div>
+                        <button onClick={() => { acceptFriendRequest(req.id); showToast(lang==='ja'?`✅ ${rp?.display_name}さんとフレンドになりました`:`✅ Now friends with ${rp?.display_name}`) }}
+                          style={{ padding:'4px 10px', background:'var(--accent)', border:'none', borderRadius:6, color:'#fff', fontSize:11, cursor:'pointer', fontFamily:'inherit', fontWeight:600 }}>
+                          {lang==='ja'?'承認':'Accept'}
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
               <div className={styles.friendList}>
                 {displayFriends.map((f: any) => {
                   const fp = f.profiles as Profile

@@ -187,10 +187,12 @@ export function useFriends(userId: string) {
   }, [userId])
 
   const sendFriendRequest = useCallback(async (targetId: string) => {
-    await (supabase as any).from('friendships').insert({
+    const { error } = await (supabase as any).from('friendships').insert({
       requester_id: userId, addressee_id: targetId, status: 'pending',
     })
-  }, [userId])
+    if (error) console.error('❌ friend request error:', error)
+    else { console.log('✅ friend request sent'); fetchFriends() }
+  }, [userId, fetchFriends])
 
   const acceptFriendRequest = useCallback(async (friendshipId: string) => {
     await (supabase as any).from('friendships').update({ status: 'accepted' }).eq('id', friendshipId)
