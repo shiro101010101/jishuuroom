@@ -139,6 +139,7 @@ export function useFriends(userId: string) {
   const [friends, setFriends]           = useState<(Friendship & { profiles: Profile })[]>([])
   const [pendingIn, setPendingIn]       = useState<(Friendship & { profiles: Profile })[]>([])
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({})
+  const [newFriendRequest, setNewFriendRequest] = useState<string | null>(null)
 
   const fetchFriends = useCallback(async () => {
     // Accepted friends
@@ -180,6 +181,10 @@ export function useFriends(userId: string) {
       }, (payload: any) => {
         console.log('📨 friendship change (addressee):', payload)
         fetchFriends()
+        // Notify when new pending request arrives
+        if (payload.eventType === 'INSERT' && payload.new?.status === 'pending') {
+          setNewFriendRequest(payload.new.requester_id)
+        }
       })
       .on('postgres_changes', {
         event: '*', schema: 'public', table: 'friendships',
@@ -201,7 +206,7 @@ export function useFriends(userId: string) {
     const { data: existing } = await (supabase as any).from('friendships')
       .select('id, status')
       .or(`and(requester_id.eq.${userId},addressee_id.eq.${targetId}),and(requester_id.eq.${targetId},addressee_id.eq.${userId})`)
-      .single()
+      .maybeSingle()
     if (existing) {
       console.log('Already friends or pending:', existing.status)
       return existing.status
@@ -246,7 +251,7 @@ export function useFriends(userId: string) {
 
   return {
     friends, pendingIn, unreadCounts,
-    sendFriendRequest, acceptFriendRequest, blockUser, reportUser,
+    sendFriendRequest, acceptFriendRequest, blockUser, reportUser, newFriendRequest, setNewFriendRequest,
     refetch: fetchFriends,
   }
 }
