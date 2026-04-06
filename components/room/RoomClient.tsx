@@ -65,6 +65,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
   const { localStream, remoteStreams } = useWebRTC(room.id, profile.id, cameraOn)
 
   // ── Face detection ──
+  const faceVideoRef = useRef<HTMLVideoElement | null>(null)
   const [faceDetectEnabled, setFaceDetectEnabled] = useState(false)
   const [noFaceThreshold, setNoFaceThreshold] = useState(120) // 秒
   const { faceStatus, noFaceSeconds } = useFaceDetection(
@@ -616,6 +617,48 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
       )}
       {toast && <div className={styles.toast}>{toast}</div>}
 
+      {/* Profile Edit Modal */}
+      {showProfileEdit && (
+        <div className={styles.overlay} onClick={() => setShowProfileEdit(false)}>
+          <div className={styles.modal} onClick={e => e.stopPropagation()}>
+            <h3>👤 {lang==='ja'?'プロフィール編集':'Edit Profile'}</h3>
+            <p style={{ fontSize:13, color:'var(--muted2)', marginBottom:16 }}>
+              {lang==='ja'?'表示名を変更できます':'Change your display name'}
+            </p>
+            <div style={{ marginBottom:16 }}>
+              <label style={{ fontSize:12, color:'var(--muted)', display:'block', marginBottom:6 }}>
+                {lang==='ja'?'表示名':'Display Name'}
+              </label>
+              <input
+                value={editName}
+                onChange={e => setEditName(e.target.value)}
+                maxLength={20}
+                placeholder={lang==='ja'?'表示名を入力...':'Enter display name...'}
+                style={{ width:'100%', padding:'10px 12px', background:'var(--bg3)',
+                  border:'1px solid var(--accent)', borderRadius:8, color:'var(--text)',
+                  fontSize:14, fontFamily:'inherit', outline:'none', boxSizing:'border-box' }}
+                onKeyDown={e => { if (e.key==='Enter') { saveDisplayName(); } }}
+                autoFocus
+              />
+              <div style={{ fontSize:11, color:'var(--muted)', marginTop:4, textAlign:'right' }}>
+                {editName.length}/20
+              </div>
+            </div>
+            <div className={styles.modalBtns}>
+              <button className={`${styles.mBtn} ${styles.ghost}`} onClick={() => setShowProfileEdit(false)}>
+                {lang==='ja'?'キャンセル':'Cancel'}
+              </button>
+              <button className={`${styles.mBtn} ${styles.primary}`}
+                onClick={saveDisplayName}
+                disabled={!editName.trim()}
+                style={{ background:'var(--accent)', color:'#fff', border:'none', opacity: editName.trim()?1:0.5 }}>
+                {lang==='ja'?'保存':'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* BLOCK MODAL */}
       {blockModal && (
         <div className={styles.overlay}>
@@ -997,14 +1040,14 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
             </div>
 
             {/* Seat grid */}
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(160px, 1fr))', gap:12 }}>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(200px, 1fr))', gap:12 }}>
 
               {/* My seat */}
               <div style={{ background:'var(--bg2)', border:'2px solid var(--accent)', borderRadius:12, padding:'8px', position:'relative' }}>
                 <div style={{ position:'absolute', top:5, left:7, fontSize:9, color:'#3a4060', fontWeight:600 }}>A1</div>
-                <div style={{ background:'#080a0f', borderRadius:8, aspectRatio:'4/3', display:'flex', alignItems:'center', justifyContent:'center', marginBottom:6, position:'relative', overflow:'hidden' }}>
+                <div style={{ background:'#080a0f', borderRadius:8, aspectRatio:'3/4', display:'flex', alignItems:'center', justifyContent:'center', marginBottom:6, position:'relative', overflow:'hidden' }}>
                   {localStream
-                    ? <video style={{ width:'100%', height:'100%', objectFit:'cover', borderRadius:8, background:'#000' }} ref={v => { if (v && v.srcObject !== localStream) v.srcObject = localStream }} autoPlay muted playsInline/>
+                    ? <video style={{ width:'100%', height:'100%', objectFit:'cover', borderRadius:8, background:'#000' }} ref={v => { if (v && v.srcObject !== localStream) { v.srcObject = localStream; (faceVideoRef as any).current = v } }} autoPlay muted playsInline/>
                     : <div style={{ width:52, height:52, borderRadius:'50%', background:'rgba(108,138,255,.2)', color:'var(--accent)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, fontWeight:700 }}>
                         {profile.avatar_url ? <img src={profile.avatar_url} alt="" width={52} height={52} style={{ borderRadius:'50%' }}/> : profile.display_name[0]}
                       </div>}
@@ -1040,7 +1083,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                       {isPinnedUser && <div style={{ position:'absolute', top:4, right:4, fontSize:10 }}>📌</div>}
                       {isAway && <div style={{ position:'absolute', top:6, left:'50%', transform:'translateX(-50%)', background:'rgba(245,158,11,.9)', borderRadius:4, padding:'2px 6px', fontSize:8, fontWeight:700, color:'#000', whiteSpace:'nowrap', zIndex:2 }}>😴 席外</div>}
                       {rxs.length > 0 && <div style={{ position:'absolute', top:-8, right:6, display:'flex', gap:1 }}>{rxs.slice(-2).map((r,i) => <span key={i} style={{ fontSize:12 }}>{r.emoji}</span>)}</div>}
-                      <div style={{ background:'#080a0f', borderRadius:8, aspectRatio:'4/3', display:'flex', alignItems:'center', justifyContent:'center', marginBottom:6, position:'relative', overflow:'hidden' }}>
+                      <div style={{ background:'#080a0f', borderRadius:8, aspectRatio:'3/4', display:'flex', alignItems:'center', justifyContent:'center', marginBottom:6, position:'relative', overflow:'hidden' }}>
                         {rs
                           ? <video style={{ width:'100%', height:'100%', objectFit:'cover', borderRadius:8, background:'#000' }} ref={v => { if (v && v.srcObject !== rs) v.srcObject = rs }} autoPlay playsInline/>
                           : <div style={{ width:52, height:52, borderRadius:'50%', background:`${color}22`, color, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, fontWeight:700, overflow:'hidden' }}>

@@ -103,19 +103,20 @@ export default function SafetyPanel({
             </div>
           </div>
 
-          {/* Face detection */}
+          {/* Face detection - BlazeFace AI */}
           <div className={styles.card} style={{ borderColor: faceDetectEnabled && cameraOn ? 'rgba(108,138,255,.3)' : 'var(--border)', marginTop:6 }}>
             <div className={styles.cardHead}>
-              <span style={{ fontSize:16 }}>😊</span>
+              <span style={{ fontSize:16 }}>🤖</span>
               <div>
-                <div className={styles.cardTitle}>{ja ? '顔検出' : 'Face Detection'}</div>
-                <div className={styles.cardDesc}>{ja ? 'カメラから肌色を検出。設定時間顔が映らないと警告。データ外部送信なし🔒' : 'Detects skin-tone from camera. Alerts if face absent. No external data sent🔒'}</div>
+                <div className={styles.cardTitle}>{ja ? 'AI顔検出 (BlazeFace)' : 'AI Face Detection (BlazeFace)'}</div>
+                <div className={styles.cardDesc}>{ja ? 'GoogleのAIで顔を検出。初回のみ読み込みに数秒かかります。データ外部送信なし🔒' : "Google's AI detects your face. First load takes a few seconds. No data sent🔒"}</div>
               </div>
               <span className={styles.badge} style={{
                 background: faceDetectEnabled && cameraOn ? 'rgba(108,138,255,.12)' : 'var(--bg3)',
                 color: faceDetectEnabled && cameraOn ? '#6c8aff' : 'var(--muted)'
               }}>
-                {cameraOn ? (faceDetectEnabled ? 'ON' : 'OFF') : (ja ? 'カメラOFF' : 'Cam OFF')}
+                {faceStatus === 'loading' ? (ja?'読込中':'Loading')
+                  : cameraOn ? (faceDetectEnabled ? 'ON' : 'OFF') : (ja?'カメラOFF':'Cam OFF')}
               </span>
             </div>
             <div className={styles.cardBody}>
@@ -125,8 +126,8 @@ export default function SafetyPanel({
                   disabled={!cameraOn}
                   style={{ accentColor:'var(--accent)', width:14, height:14 }} />
                 <span style={{ fontSize:12, color: cameraOn ? 'var(--muted2)' : 'var(--muted)' }}>
-                  {ja ? '顔検出を有効にする' : 'Enable face detection'}
-                  {!cameraOn && <span style={{ fontSize:10, marginLeft:4, color:'var(--muted)' }}>({ja ? 'カメラをONにしてください' : 'Please enable camera'})</span>}
+                  {ja ? 'AI顔検出を有効にする' : 'Enable AI face detection'}
+                  {!cameraOn && <span style={{ fontSize:10, marginLeft:4 }}>({ja?'カメラをONにしてください':'Enable camera first'})</span>}
                 </span>
               </label>
               {faceDetectEnabled && cameraOn && (
@@ -134,22 +135,25 @@ export default function SafetyPanel({
                   <div className={styles.row}>
                     <span className={styles.label}>{ja ? '警告までの時間' : 'Alert after'}</span>
                     <select value={noFaceThreshold} onChange={e => onNoFaceThresholdChange(Number(e.target.value))} className={styles.select}>
-                      <option value={30}>{ja ? '30秒（厳しめ）' : '30s (strict)'}</option>
-                      <option value={60}>{ja ? '1分' : '1 min'}</option>
-                      <option value={120}>{ja ? '2分（トイレ・お茶）' : '2 min (toilet/drink)'}</option>
-                      <option value={300}>{ja ? '5分（ストレッチ）' : '5 min (stretch)'}</option>
-                      <option value={600}>{ja ? '10分（ゆるめ）' : '10 min (relaxed)'}</option>
+                      <option value={30}>{ja ? '30秒' : '30s'}</option>
+                      <option value={60}>{ja ? '1分' : '1min'}</option>
+                      <option value={120}>{ja ? '2分（おすすめ）' : '2min (recommended)'}</option>
+                      <option value={300}>{ja ? '5分' : '5min'}</option>
+                      <option value={600}>{ja ? '10分' : '10min'}</option>
                     </select>
                   </div>
                   <div className={styles.statusRow}>
                     <div className={styles.dot} style={{
-                      background: faceStatus==='face_detected'?'#34d399':faceStatus==='no_face'?'#f87171':'#64748b'
+                      background: faceStatus==='face_detected'?'#34d399'
+                        :faceStatus==='no_face'?'#f87171'
+                        :faceStatus==='loading'?'#fbbf24':'#64748b'
                     }}/>
                     <span style={{ fontSize:11, color:'var(--muted2)' }}>
-                      {faceStatus==='face_detected' ? (ja?'😊 顔を検出中':'😊 Face detected')
-                        : faceStatus==='no_face' ? `😴 ${noFaceSeconds}${ja?'秒':'s'} / ${noFaceThreshold}${ja?'秒':'s'}`
-                        : faceStatus==='checking' ? (ja?'🔍 確認中...':'🔍 Checking...')
-                        : (ja?'待機中':'Standby')}
+                      {faceStatus==='loading' ? (ja?'🤖 AI読込中...':'🤖 Loading AI...')
+                        :faceStatus==='face_detected' ? (ja?'😊 顔を検出中':'😊 Face detected')
+                        :faceStatus==='no_face' ? `😴 ${noFaceSeconds}${ja?'秒':'s'} / ${noFaceThreshold}${ja?'秒':'s'}`
+                        :faceStatus==='checking' ? (ja?'🔍 確認中...':'🔍 Checking...')
+                        :(ja?'待機中':'Standby')}
                     </span>
                     {faceStatus==='no_face' && (
                       <div className={styles.prog}><div className={styles.progFill} style={{ width:`${pct}%` }}/></div>

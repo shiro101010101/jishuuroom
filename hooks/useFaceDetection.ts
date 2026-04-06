@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useRef, useState, useCallback } from 'react'
 
-export type FaceStatus = 'no_camera' | 'face_detected' | 'no_face' | 'checking'
+export type FaceStatus = 'no_camera' | 'face_detected' | 'no_face' | 'checking' | 'loading'
 
 export function useFaceDetection(
   videoRef: React.RefObject<HTMLVideoElement | null>,
@@ -9,60 +9,74 @@ export function useFaceDetection(
   onNoFace?: () => void,
   noFaceThresholdSec: number = 120
 ) {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
+  const detectorRef = useRef<any>(null)
   const [faceStatus, setFaceStatus] = useState<FaceStatus>('no_camera')
   const noFaceSecondsRef = useRef(0)
   const [noFaceSeconds, setNoFaceSeconds] = useState(0)
+  const loadingRef = useRef(false)
 
-  const detectFace = useCallback(() => {
-    const video = videoRef.current
-    if (!video || video.readyState < 2 || video.videoWidth === 0) {
+  const loadDetector = useCallback(async () => {
+    if (detectorRef.current || loadingRef.current) return
+    loadingRef.current = true
+    setFaceStatus('loading')
+    try {
+      // Load TensorFlow.js and BlazeFace from CDN
+      if (!(window as any).tf) {
+        await new Promise<void>((resolve, reject) => {
+          const s = document.createElement('script')
+          s.src = 'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js'
+          s.onload = () => resolve()
+          s.onerror = reject
+          document.head.appendChild(s)
+        })
+      }
+      if (!(window as any).blazeface) {
+        await new Promise<void>((resolve, reject) => {
+          const s = document.createElement('script')
+          s.src = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js'
+          s.onload = () => resolve()
+          s.onerror = reject
+          document.head.appendChild(s)
+        })
+      }
+      // Wait for tf to be ready
+      await (window as any).tf.ready()
+      detectorRef.current = await (window as any).blazeface.load()
       setFaceStatus('checking')
-      return
+      console.log('✓ BlazeFace loaded')
+    } catch(e) {
+      console.error('Failed to load face detector:', e)
+      setFaceStatus('no_camera')
     }
+    loadingRef.current = false
+  }, [])
 
-    if (!canvasRef.current) {
-      canvasRef.current = document.createElement('canvas')
-    }
-    const canvas = canvasRef.current
-    const SIZE = 64
-    canvas.width = SIZE
-    canvas.height = SIZE
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
+  const detectFace = useCallback(async () => {
+    const video = videoRef.current
+    if (!video || video.readyState < 2 || video.videoWidth === 0) return
+    if (!detectorRef.current) return
 
-    ctx.drawImage(video, 0, 0, SIZE, SIZE)
-    const imageData = ctx.getImageData(0, 0, SIZE, SIZE)
-    const data = imageData.data
-    let skinPixels = 0
+    try {
+      const predictions = await detectorRef.current.estimateFaces(video, false)
+      const faceDetected = predictions && predictions.length > 0
 
-    for (let i = 0; i < data.length; i += 4) {
-      const r = data[i], g = data[i + 1], b = data[i + 2]
-      const isSkin = (
-        (r > 95 && g > 40 && b > 20 && r > g && r > b && Math.abs(r - g) > 15) ||
-        (r > 80 && g > 50 && b > 30 && r > b && r > g * 0.8) ||
-        (r > 60 && g > 35 && b > 20 && r > b * 1.1)
-      )
-      if (isSkin) skinPixels++
-    }
-
-    const skinRatio = skinPixels / (SIZE * SIZE)
-    const faceDetected = skinRatio > 0.04
-
-    if (faceDetected) {
-      setFaceStatus('face_detected')
-      noFaceSecondsRef.current = 0
-      setNoFaceSeconds(0)
-    } else {
-      setFaceStatus('no_face')
-      noFaceSecondsRef.current += 2
-      setNoFaceSeconds(noFaceSecondsRef.current)
-      if (noFaceSecondsRef.current >= noFaceThresholdSec && onNoFace) {
+      if (faceDetected) {
+        setFaceStatus('face_detected')
         noFaceSecondsRef.current = 0
         setNoFaceSeconds(0)
-        onNoFace()
+      } else {
+        setFaceStatus('no_face')
+        noFaceSecondsRef.current += 2
+        setNoFaceSeconds(noFaceSecondsRef.current)
+        if (noFaceSecondsRef.current >= noFaceThresholdSec && onNoFace) {
+          noFaceSecondsRef.current = 0
+          setNoFaceSeconds(0)
+          onNoFace()
+        }
       }
+    } catch(e) {
+      console.error('Face detection error:', e)
     }
   }, [videoRef, onNoFace, noFaceThresholdSec])
 
@@ -75,18 +89,19 @@ export function useFaceDetection(
       return
     }
 
-    setFaceStatus('checking')
-    noFaceSecondsRef.current = 0
-
-    const startTimer = setTimeout(() => {
-      intervalRef.current = setInterval(detectFace, 2000)
-    }, 1000)
+    loadDetector().then(() => {
+      if (!detectorRef.current) return
+      noFaceSecondsRef.current = 0
+      setFaceStatus('checking')
+      setTimeout(() => {
+        intervalRef.current = setInterval(detectFace, 2000)
+      }, 2000)
+    })
 
     return () => {
-      clearTimeout(startTimer)
       if (intervalRef.current) clearInterval(intervalRef.current)
     }
-  }, [enabled, detectFace])
+  }, [enabled, loadDetector, detectFace])
 
   return { faceStatus, noFaceSeconds }
 }
