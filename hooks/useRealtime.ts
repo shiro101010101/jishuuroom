@@ -122,7 +122,7 @@ export function useMessages(userId: string, friendId: string) {
         const msg = payload.new as Message
         if (msg.sender_id === friendId) {
           setMessages(prev => [...prev, msg])
-          (supabase as any).from('messages').update({ is_read: true }).eq('id', msg.id)
+          ;(supabase as any).from('messages').update({ is_read: true }).eq('id', msg.id)
         }
       })
       .subscribe()

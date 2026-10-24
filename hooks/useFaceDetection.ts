@@ -15,6 +15,11 @@ export function useFaceDetection(
   const noFaceSecondsRef = useRef(0)
   const [noFaceSeconds, setNoFaceSeconds] = useState(0)
   const loadingRef = useRef(false)
+  // Keep latest callback/threshold in refs so the detection loop isn't restarted on every render
+  const onNoFaceRef = useRef(onNoFace)
+  const thresholdRef = useRef(noFaceThresholdSec)
+  onNoFaceRef.current = onNoFace
+  thresholdRef.current = noFaceThresholdSec
 
   const loadDetector = useCallback(async () => {
     if (detectorRef.current || loadingRef.current) return
@@ -69,16 +74,16 @@ export function useFaceDetection(
         setFaceStatus('no_face')
         noFaceSecondsRef.current += 2
         setNoFaceSeconds(noFaceSecondsRef.current)
-        if (noFaceSecondsRef.current >= noFaceThresholdSec && onNoFace) {
+        if (noFaceSecondsRef.current >= thresholdRef.current && onNoFaceRef.current) {
           noFaceSecondsRef.current = 0
           setNoFaceSeconds(0)
-          onNoFace()
+          onNoFaceRef.current()
         }
       }
     } catch(e) {
       console.error('Face detection error:', e)
     }
-  }, [videoRef, onNoFace, noFaceThresholdSec])
+  }, [videoRef])
 
   useEffect(() => {
     if (!enabled) {
@@ -89,16 +94,20 @@ export function useFaceDetection(
       return
     }
 
+    let cancelled = false
+    let startTimeout: NodeJS.Timeout | null = null
     loadDetector().then(() => {
-      if (!detectorRef.current) return
+      if (cancelled || !detectorRef.current) return
       noFaceSecondsRef.current = 0
       setFaceStatus('checking')
-      setTimeout(() => {
-        intervalRef.current = setInterval(detectFace, 2000)
+      startTimeout = setTimeout(() => {
+        if (!cancelled) intervalRef.current = setInterval(detectFace, 2000)
       }, 2000)
     })
 
     return () => {
+      cancelled = true
+      if (startTimeout) clearTimeout(startTimeout)
       if (intervalRef.current) clearInterval(intervalRef.current)
     }
   }, [enabled, loadDetector, detectFace])

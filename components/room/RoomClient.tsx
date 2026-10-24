@@ -49,6 +49,18 @@ const WORD_FILTERS = [
   'キモい', 'デブ', 'ブス', 'キショい',
 ]
 const SEAT_COLORS = ['#6c8aff','#a78bfa','#34d399','#f59e0b','#f87171','#fbbf24','#60a5fa','#fb7185','#4ade80','#facc15']
+type PanelId = 'timer' | 'tasks' | 'music' | 'stats' | 'friends' | 'schedule' | 'rooms' | 'activity' | 'safety'
+const DOCK_PANELS: { id: PanelId; icon: string; ja: string; en: string }[] = [
+  { id: 'timer',    icon: '⏱', ja: 'タイマー', en: 'Timer' },
+  { id: 'tasks',    icon: '✅', ja: 'タスク',   en: 'Tasks' },
+  { id: 'music',    icon: '🎵', ja: 'BGM',      en: 'Music' },
+  { id: 'stats',    icon: '📊', ja: '統計',     en: 'Stats' },
+  { id: 'friends',  icon: '👥', ja: 'フレンド', en: 'Friends' },
+  { id: 'schedule', icon: '📅', ja: '予定',     en: 'Schedule' },
+  { id: 'rooms',    icon: '🏠', ja: 'ルーム',   en: 'Rooms' },
+  { id: 'activity', icon: '🔔', ja: '通知',     en: 'Activity' },
+  { id: 'safety',   icon: '🛡️', ja: '安全設定', en: 'Safety' },
+]
 
 export default function RoomClient({ profile, room, allRooms, initialMembers, initialFriends, initialTasks, weeklyStats }: Props) {
   const router = useRouter()
@@ -59,7 +71,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
     showToast('🍅 ポモドーロ完了！お疲れさまでした')
     addNotif('🍅', 'ポモドーロを完了しました！')
     saveStudySession()
-    (supabase as any).rpc('update_streak')
+    ;(supabase as any).rpc('update_streak')
   })
   const [cameraOn, setCameraOn] = useState(false)
   const { localStream, remoteStreams } = useWebRTC(room.id, profile.id, cameraOn)
@@ -69,7 +81,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
   const [faceDetectEnabled, setFaceDetectEnabled] = useState(false)
   const [noFaceThreshold, setNoFaceThreshold] = useState(120) // 秒
   const { faceStatus, noFaceSeconds } = useFaceDetection(
-    localStream,
+    faceVideoRef,
     cameraOn && faceDetectEnabled,
     () => {
       showToast(T.faceWarning)
@@ -127,7 +139,8 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
   const chatEndRef = useRef<HTMLDivElement>(null)
 
   // ── UI ──
-  const [activeTab, setActiveTab] = useState<'stats' | 'bgm' | 'activity' | 'schedule' | 'safety'>('stats')
+  const [panel, setPanel] = useState<PanelId | null>(null)
+  const [zen, setZen] = useState(false)
   const [showProfileEdit, setShowProfileEdit] = useState(false)
   const [editName, setEditName] = useState(profile.display_name)
   const [savingName, setSavingName] = useState(false)
@@ -197,8 +210,18 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
     const t = setInterval(() => setOnlineCount(c => Math.max(200, c + Math.floor(Math.random() * 6 - 3))), 15_000)
     return () => clearInterval(t)
   }, [])
-  useEffect(() => { updateStatus(timer.mode === 'focus' ? 'studying' : 'break', currentTask, cameraOn) }, [cameraOn, timer.mode, currentTask])
+  useEffect(() => { updateStatus(timer.mode === 'short' || timer.mode === 'long' ? 'break' : 'studying', currentTask, cameraOn) }, [cameraOn, timer.mode, currentTask])
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [chatMessages])
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      if (zen) setZen(false)
+      else if (chatFriendId) setChatFriendId(null)
+      else setPanel(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [zen, chatFriendId])
 
   // Live study counter
   useEffect(() => {
@@ -557,6 +580,13 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
   }
   function toggleBgm(id: string) { if (bgmPlaying === id) { stopBgmNodes(); setBgmPlaying(null) } else { playBgm(id) } }
 
+  function togglePanel(id: PanelId) { setChatFriendId(null); setPanel(p => p === id ? null : id) }
+  function openChat(friendId: string) { setPanel('friends'); setChatFriendId(friendId) }
+  async function leaveRoom() {
+    await (supabase as any).from('room_members').delete().eq('room_id', room.id).eq('user_id', profile.id)
+    router.push('/')
+  }
+
   function addNotif(icon: string, text: string) { setNotifications(prev => [{ icon, text, time: 'たった今' }, ...prev].slice(0, 10)) }
   function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(null), 3000) }
   async function handleBlock(userId: string, name: string) {
@@ -591,9 +621,13 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
   const friendsForTaskPanel = displayFriends.map((f: any) => ({ id: f.addressee_id, display_name: (f.profiles as Profile).display_name, avatar_url: (f.profiles as Profile).avatar_url }))
 
   const filteredMembers = displayMembers.filter((m: any) => m.user_id !== profile.id && (!showPinnedFilter || pinnedUserIds.includes(m.user_id)))
-  const allSeats = 20
-  const emptySeats = Math.max(0, allSeats - displayMembers.length)
-  const seatRows = ['A','B','C','D','E']
+  const tileCount = filteredMembers.length + 1 + (!showPinnedFilter && filteredMembers.length < 3 ? 1 : 0)
+  const gridCols = tileCount <= 1 ? 1 : tileCount <= 4 ? 2 : tileCount <= 9 ? 3 : 4
+  const studyingCount = displayMembers.filter((m: any) => m.status === 'studying').length
+  const myStatus: 'studying' | 'break' | 'away' = awayModal ? 'away' : timer.mode === 'short' || timer.mode === 'long' ? 'break' : 'studying'
+  const statusLabel = (st: string) => st === 'studying' ? (lang==='ja'?'● 集中中':'● Focusing') : st === 'break' ? (lang==='ja'?'☕ 休憩中':'☕ Break') : (lang==='ja'?'😴 離席':'😴 Away')
+  const timerModeLabel = timer.mode==='focus'?'集中モード':timer.mode==='short'?'小休憩':timer.mode==='long'?'長休憩':'カスタム'
+  const leaderboard = [...displayMembers].sort((a: any, b: any) => (b.study_seconds ?? 0) - (a.study_seconds ?? 0)).slice(0, 10)
 
   return (
     <div className={styles.root}>
@@ -828,351 +862,189 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
         </div>
       </header>
 
-      {/* DESKTOP LAYOUT */}
+      {/* DESKTOP LAYOUT — Study Stream style: video stage + dock + slide-in drawer */}
       <div className={styles.desktopLayout}>
 
-        {/* LEFT SIDEBAR */}
-        <aside className={styles.sl}>
-          <div className={styles.slScroll}>
+        {/* STAGE */}
+        <main className={styles.ssStage}>
 
-            {/* Timer */}
-            <div>
-              <div className={styles.secLabel}>⏱ ポモドーロタイマー</div>
-              <div className={styles.timerModes}>
-                {(['focus','short','long'] as const).map((m,i) => (
-                  <button key={m} className={`${styles.modeBtn} ${timer.mode===m?styles.modeBtnActive:''}`} onClick={() => timer.switchMode(m)}>
-                    {['集中','小休憩','長休憩'][i]}
-                  </button>
-                ))}
-                <button className={`${styles.modeBtn} ${timer.mode==='custom'?styles.modeBtnActive:''}`}
-                  onClick={() => setShowCustomTimer(true)}>カスタム</button>
-              </div>
-              {timer.mode === 'custom' && (
-                <div style={{ textAlign:'center', fontSize:11, color:'var(--accent)', marginBottom:6 }}>
-                  集中{timer.customFocusMins}分 / 休憩{timer.customBreakMins}分
-                  <button onClick={() => setShowCustomTimer(true)} style={{ marginLeft:6, fontSize:10, color:'var(--muted)', background:'transparent', border:'none', cursor:'pointer' }}>変更</button>
-                </div>
-              )}
-              <div className={styles.ringWrap}>
-                <svg className={styles.timerRing} width="110" height="110" viewBox="0 0 110 110">
-                  <defs>
-                    <linearGradient id="rg" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#6c8aff"/><stop offset="100%" stopColor="#a78bfa"/>
-                    </linearGradient>
-                  </defs>
-                  <circle className={styles.ringBg} cx="55" cy="55" r="50"/>
-                  <circle className={styles.ringProg} cx="55" cy="55" r="50" strokeDasharray="314.2" strokeDashoffset={314.2 - timer.progress * 314.2}/>
-                </svg>
-                <div className={styles.ringInner}>
-                  <div className={styles.timerDigits}>{fmtTime(timer.seconds)}</div>
-                  <div className={styles.timerLbl}>{timer.mode==='focus'?'集中モード':timer.mode==='short'?'小休憩':timer.mode==='long'?'長休憩':'カスタム'}</div>
+          {/* Top row: room info / timer pill / current task */}
+          <div className={styles.ssTopRow}>
+            <button className={styles.ssRoomInfo} onClick={() => togglePanel('rooms')} title={lang==='ja'?'ルームを切り替え':'Switch room'}>
+              <span className={styles.ssRoomEmoji}>{room.emoji ?? '📚'}</span>
+              <div style={{ minWidth:0 }}>
+                <div className={styles.ssRoomName}>{room.name} ▾</div>
+                <div className={styles.ssRoomMeta}>
+                  <span className={styles.liveDot}/> {studyingCount}{lang==='ja'?'人が集中中':' focusing'} · {displayMembers.length}{lang==='ja'?'人が入室':' in room'}
                 </div>
               </div>
-              <div className={styles.timerCtrl}>
-                <button className={styles.btnStart} onClick={timer.toggle}>{timer.running?'⏸ 一時停止':'▶ スタート'}</button>
-                <button className={styles.btnReset} onClick={timer.reset}>↺</button>
-              </div>
-              <div className={styles.pomoDots}>
-                {[0,1,2,3].map((i: any) => <div key={i} className={`${styles.pdot} ${i<(timer.pomosCompleted%4)?styles.pdotDone:''}`}/>)}
-              </div>
-            </div>
-
-            {/* Subject selector */}
-            <div>
-              <div className={styles.secLabel}>{lang==='ja'?'🎯 勉強科目':'🎯 Subject'}</div>
-              <button onClick={() => setShowSubjectPicker(true)} style={{ width:'100%', padding:'8px 12px', background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:8, color:mySubject?'var(--accent)':'var(--muted)', fontSize:12, cursor:'pointer', fontFamily:'inherit', textAlign:'left', transition:'.2s' }}>
-                {mySubject || '科目を選択...'} ▾
-              </button>
-            </div>
-
-            {/* Tasks */}
-            <div>
-              <div className={styles.secLabel}>{lang==='ja'?'✅ タスク管理':'✅ Tasks'}</div>
-              <TaskPanel userId={profile.id} roomId={room.id} tasks={tasks}
-                onAddTask={addTask} onCompleteTask={completeTask} onDeleteTask={deleteTask}
-                onUpdateShare={updateTaskShareLocal}
-                friends={friendsForTaskPanel}/>
-            </div>
-
-            {/* Friends */}
-            <div>
-              <div className={styles.secLabel}>{lang==='ja'?'👥 フレンド':'👥 Friends'}</div>
-
-              {/* Pending friend requests */}
-              {pendingIn.length > 0 && (
-                <div style={{ marginBottom:8 }}>
-                  {pendingIn.map((req: any) => {
-                    const rp = req.profiles
-                    return (
-                      <div key={req.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 10px', background:'rgba(108,138,255,.08)', border:'1px solid rgba(108,138,255,.3)', borderRadius:8, marginBottom:5 }}>
-                        <div style={{ width:28, height:28, borderRadius:'50%', background:'var(--accent)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:700, flexShrink:0, overflow:'hidden' }}>
-                          {rp?.avatar_url ? <img src={rp.avatar_url} width={28} height={28} style={{ borderRadius:'50%' }} alt=""/> : rp?.display_name?.[0]}
-                        </div>
-                        <div style={{ flex:1, minWidth:0 }}>
-                          <div style={{ fontSize:12, fontWeight:600 }}>{rp?.display_name}</div>
-                          <div style={{ fontSize:10, color:'var(--muted)' }}>{lang==='ja'?'フレンド申請が届いています':'Friend request'}</div>
-                        </div>
-                        <button onClick={() => { acceptFriendRequest(req.id); showToast(lang==='ja'?`✅ ${rp?.display_name}さんとフレンドになりました`:`✅ Now friends with ${rp?.display_name}`) }}
-                          style={{ padding:'4px 10px', background:'var(--accent)', border:'none', borderRadius:6, color:'#fff', fontSize:11, cursor:'pointer', fontFamily:'inherit', fontWeight:600 }}>
-                          {lang==='ja'?'承認':'Accept'}
-                        </button>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-
-              <div className={styles.friendList}>
-                {displayFriends.map((f: any) => {
-                  const fp = f.profiles as Profile
-                  const unread = unreadCounts[f.addressee_id] || 0
-                  return (
-                    <div key={f.id} className={styles.friendItem}>
-                      <div className={styles.friendAvatar}>
-                        {fp.avatar_url ? <img src={fp.avatar_url} alt="" width={30} height={30} style={{ borderRadius:'50%', objectFit:'cover' }}/> : fp.display_name[0]}
-                        <div className={styles.friendDot}/>
-                      </div>
-                      <div className={styles.friendInfo}>
-                        <div className={styles.friendName}>{fp.display_name}{unread>0&&<span className={styles.unreadBadge}>{unread}</span>}</div>
-                        <div className={styles.friendMeta}>勉強中</div>
-                      </div>
-                      <div className={styles.friendActions}>
-                        <button className={`${styles.faBtn} ${styles.faBtnChat}`} onClick={() => setChatFriendId(f.addressee_id)}>💬</button>
-                        <button className={`${styles.faBtn} ${styles.faBtnBlock}`} onClick={() => setBlockModal({ userId:f.addressee_id, name:fp.display_name })}>🚫</button>
-                      </div>
-                    </div>
-                  )
-                })}
-                {displayFriends.length===0&&<div style={{ fontSize:11, color:'var(--muted)', textAlign:'center', padding:'12px 0' }}>{T.noFriends}</div>}
-              </div>
-            </div>
-
-            {/* Away & Safety settings */}
-            <div>
-              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
-                <div className={styles.secLabel} style={{ margin:0 }}>{lang==='ja'?'🛡️ 離席・安全設定':'🛡️ Safety Settings'}</div>
-                <button onClick={() => setActiveTab('safety')}
-                  style={{ fontSize:10, color:'var(--accent)', background:'transparent', border:'none', cursor:'pointer', fontFamily:'inherit', padding:0 }}>
-                  {lang==='ja'?'詳細設定 →':'Details →'}
-                </button>
-              </div>
-
-              {/* Quick status indicators */}
-              <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
-                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'6px 8px', background:'var(--bg3)', borderRadius:7, border:'1px solid var(--border)' }}>
-                  <span style={{ fontSize:11, color:'var(--muted2)' }}>{lang==='ja'?'📱 別タブ検出':'📱 Tab Switch'}</span>
-                  <span style={{ fontSize:10, color:'#34d399', fontWeight:600 }}>{lang==='ja'?'常時ON':'Always ON'}</span>
-                </div>
-
-                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'6px 8px', background:'var(--bg3)', borderRadius:7, border:'1px solid var(--border)' }}>
-                  <span style={{ fontSize:11, color:'var(--muted2)' }}>{lang==='ja'?'😊 顔検出':'😊 Face Detection'}</span>
-                  <label style={{ display:'flex', alignItems:'center', gap:4, cursor: cameraOn ? 'pointer' : 'not-allowed' }}>
-                    <input type="checkbox" checked={faceDetectEnabled}
-                      onChange={e => setFaceDetectEnabled(e.target.checked)}
-                      disabled={!cameraOn}
-                      style={{ accentColor:'var(--accent)', width:12, height:12 }}/>
-                    <span style={{ fontSize:10, color: cameraOn ? 'var(--muted2)' : 'var(--muted)' }}>
-                      {faceDetectEnabled && cameraOn
-                        ? faceStatus === 'face_detected' ? '✅ 検出中'
-                          : faceStatus === 'no_face' ? `⚠️ ${noFaceSeconds}秒`
-                          : '🔍 確認中'
-                        : cameraOn ? 'ON' : (lang==='ja'?'カメラOFF':'Cam OFF')}
-                    </span>
-                  </label>
-                </div>
-
-                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'6px 8px', background:'var(--bg3)', borderRadius:7, border:`1px solid ${awayEnabled?'var(--accent)':'var(--border)'}` }}>
-                  <span style={{ fontSize:11, color:'var(--muted2)' }}>{lang==='ja'?'⌨️ 操作なし検出':'⌨️ Inactivity'}</span>
-                  <label style={{ display:'flex', alignItems:'center', gap:4, cursor:'pointer' }}>
-                    <input type="checkbox" checked={awayEnabled}
-                      onChange={e => setAwayEnabled(e.target.checked)}
-                      style={{ accentColor:'var(--accent)', width:12, height:12 }}/>
-                    {awayEnabled && (
-                      <select value={awayMinutes} onChange={e => setAwayMinutes(Number(e.target.value))}
-                        style={{ background:'transparent', border:'none', color:'var(--accent)', fontSize:10, cursor:'pointer', fontFamily:'inherit', outline:'none' }}>
-                        <option value={1}>1分</option><option value={3}>3分</option>
-                        <option value={5}>5分</option><option value={10}>10分</option>
-                      </select>
-                    )}
-                  </label>
-                </div>
-              </div>
-            </div>
-
-          </div>
-        </aside>
-
-        {/* MAIN */}
-        <main className={styles.main}>
-
-          {/* Camera bar */}
-          <div className={styles.camCtrl}>
-            <button className={`${styles.ctrlBtn} ${cameraOn?styles.ctrlBtnActive:''}`} onClick={() => setCameraOn(v => !v)}>
-              📷 {cameraOn ? (lang==='ja'?'カメラON':'Camera ON') : (lang==='ja'?'カメラOFF':'Camera OFF')}
             </button>
-            <div className={styles.micBadge}>{T.micBanned}</div>
-            <div className={styles.ctrlInfo}>{T.noTalk}</div>
-            <button className={`${styles.ctrlBtn} ${styles.ctrlBtnDanger}`} onClick={async () => {
-                await (supabase as any).from('room_members').delete().eq('room_id', room.id).eq('user_id', profile.id)
-                router.push('/')
-              }}>{T.leaveRoom}</button>
-          </div>
 
-          {/* Focus bar */}
-          <div className={styles.focusBar}>
-            <div>
-              <div className={styles.focusLbl}>{T.currentTask}</div>
-              <div className={styles.focusTask}>{currentTask}</div>
-            </div>
-            <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-              {mySubject && <div style={{ padding:'3px 10px', background:'rgba(108,138,255,.1)', border:'1px solid rgba(108,138,255,.2)', borderRadius:12, fontSize:11, color:'var(--accent)' }}>{mySubject}</div>}
-              <div className={styles.sessionBadge}>{lang==='ja'?'セッション':'Session'} {timer.sessionCount} / 4</div>
-            </div>
-          </div>
-
-          {/* Daily message input */}
-          <div style={{ display:'flex', gap:8 }}>
-            <input placeholder="今日の一言を投稿..."
-              value={dailyMsgInput} onChange={e => setDailyMsgInput(e.target.value)}
-              onKeyDown={e => e.key==='Enter' && saveDailyMessage(dailyMsgInput)}
-              style={{ flex:1, padding:'8px 12px', background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:8, color:'var(--text)', fontSize:12, fontFamily:'inherit', outline:'none' }}/>
-            <button onClick={() => { saveDailyMessage(dailyMsgInput); setDailyMsgInput('') }}
-              style={{ padding:'8px 14px', background:'var(--accent)', border:'none', borderRadius:8, color:'#fff', fontSize:12, cursor:'pointer', fontFamily:'inherit' }}>{lang==='ja'?'投稿':'Post'}</button>
-          </div>
-
-          {/* Classroom */}
-          <div>
-            {/* Blackboard */}
-            <div style={{ background:'#0a2a1a', border:'2px solid #1a4a2a', borderRadius:10, padding:'10px 20px', textAlign:'center', marginBottom:16 }}>
-              <div style={{ color:'#34d399', fontSize:13, opacity:.85 }}>📚 {room.name} — 集中して頑張ろう！</div>
-              <div style={{ display:'flex', justifyContent:'center', gap:20, fontSize:10, color:'#1a5a3a', marginTop:4 }}>
-                <span>勉強中 {displayMembers.filter(m=>m.status==='studying').length}人</span>
-                <span>休憩中 {displayMembers.filter(m=>m.status==='break').length}人</span>
-                <span>席外 {displayMembers.filter(m=>m.status==='away').length}人</span>
-                <span>空席 {emptySeats}席</span>
-              </div>
-            </div>
-
-            {/* Controls */}
-            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
-              <div className={styles.secLabel} style={{ marginBottom:0 }}>🎓 自習ルーム ({displayMembers.length}人)</div>
-              <button onClick={() => setShowPinnedFilter(v => !v)}
-                style={{ display:'flex', alignItems:'center', gap:5, padding:'4px 10px', background:showPinnedFilter?'rgba(108,138,255,.15)':'var(--bg3)', border:`1px solid ${showPinnedFilter?'var(--accent)':'var(--border)'}`, borderRadius:6, color:showPinnedFilter?'var(--accent)':'var(--muted)', fontSize:11, cursor:'pointer', fontFamily:'inherit', transition:'.2s' }}>
-                📌 {showPinnedFilter?'ピンのみ表示':T.pinnedOnly}
+            <div className={`${styles.ssTimerPill} ${timer.mode==='focus'||timer.mode==='custom'?styles.ssTimerFocus:styles.ssTimerBreak}`}>
+              <button className={styles.ssTimerMain} onClick={() => togglePanel('timer')} title={lang==='ja'?'タイマー設定':'Timer settings'}>
+                <span className={styles.ssTimerMode}>{timerModeLabel}</span>
+                <span className={styles.ssTimerDigits}>{fmtTime(timer.seconds)}</span>
               </button>
+              <button className={styles.ssTimerPlay} onClick={timer.toggle} aria-label={timer.running?'pause':'start'}>
+                {timer.running ? '❚❚' : '▶'}
+              </button>
+              <div className={styles.ssTimerBar} style={{ width:`${timer.progress*100}%` }}/>
             </div>
 
-            {/* Seat grid */}
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(200px, 1fr))', gap:12 }}>
+            <button className={styles.ssTaskPill} onClick={() => togglePanel('tasks')}>
+              <span className={styles.ssTaskLbl}>{T.currentTask}</span>
+              <span className={styles.ssTaskTxt}>{currentTask}</span>
+            </button>
+          </div>
 
-              {/* My seat */}
-              <div style={{ background:'var(--bg2)', border:'2px solid var(--accent)', borderRadius:12, padding:'8px', position:'relative' }}>
-                <div style={{ position:'absolute', top:5, left:7, fontSize:9, color:'#3a4060', fontWeight:600 }}>A1</div>
-                <div style={{ background:'#080a0f', borderRadius:8, aspectRatio:'3/4', display:'flex', alignItems:'center', justifyContent:'center', marginBottom:6, position:'relative', overflow:'hidden' }}>
-                  {localStream
-                    ? <video style={{ width:'100%', height:'100%', objectFit:'cover', borderRadius:8, background:'#000' }} ref={v => { if (v && v.srcObject !== localStream) { v.srcObject = localStream; (faceVideoRef as any).current = v } }} autoPlay muted playsInline/>
-                    : <div style={{ width:52, height:52, borderRadius:'50%', background:'rgba(108,138,255,.2)', color:'var(--accent)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, fontWeight:700 }}>
-                        {profile.avatar_url ? <img src={profile.avatar_url} alt="" width={52} height={52} style={{ borderRadius:'50%' }}/> : profile.display_name[0]}
-                      </div>}
-                  {streak > 0 && <div style={{ position:'absolute', top:3, right:3, fontSize:9, color:'#f59e0b' }}>🔥{streak}</div>}
+          {/* Video grid */}
+          <div className={styles.ssGridWrap}>
+            <div className={styles.ssGrid} style={{ gridTemplateColumns:`repeat(${gridCols}, minmax(0, 1fr))`, maxWidth: gridCols === 1 ? 880 : gridCols === 2 ? 1200 : undefined }}>
+
+              {/* My tile */}
+              <div className={`${styles.ssTile} ${styles.ssTileMe}`}>
+                {localStream
+                  ? <video className={`${styles.ssVideo} ${styles.ssVideoMirror}`} ref={v => { if (v && v.srcObject !== localStream) { v.srcObject = localStream; (faceVideoRef as any).current = v } }} autoPlay muted playsInline/>
+                  : <div className={styles.ssTileOff}>
+                      <div className={styles.ssAvatar} style={{ background:'rgba(108,138,255,.2)', color:'var(--accent)' }}>
+                        {profile.avatar_url ? <img src={profile.avatar_url} alt=""/> : profile.display_name[0]}
+                      </div>
+                      <button className={styles.ssCamCta} onClick={() => setCameraOn(true)}>📷 {lang==='ja'?'カメラをONにする':'Turn camera on'}</button>
+                    </div>}
+                <div className={styles.ssTileTop}>
+                  <span className={`${styles.ssStatus} ${myStatus==='studying'?styles.ssStatusStudy:myStatus==='break'?styles.ssStatusBreak:styles.ssStatusAway}`}>
+                    {statusLabel(myStatus)}
+                  </span>
+                  {streak > 0 && <span className={styles.ssChip}>🔥{streak}</span>}
                 </div>
-                <div style={{ fontSize:12, color:'var(--accent)', textAlign:'center', fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{profile.display_name}</div>
-                <div style={{ display:'flex', justifyContent:'center', gap:4, marginTop:4 }}>
-                  <button title="自分をピン（ピンフィルターに含める）"
-                    onClick={() => setShowPinnedFilter(false)}
-                    style={{ background:'transparent', border:'none', cursor:'pointer', fontSize:11, opacity:.7 }}
-                    title="あなたはピンリストに常に表示されます">📌自</button>
+                <div className={styles.ssTileBottom}>
+                  <span className={styles.ssName}>{profile.display_name} <span style={{ opacity:.6 }}>{lang==='ja'?'(あなた)':'(you)'}</span></span>
+                  {mySubject && <span className={styles.ssChip}>{mySubject}</span>}
                 </div>
-                {mySubject && <div style={{ textAlign:'center' }}><span style={{ display:'inline-block', padding:'1px 5px', borderRadius:3, fontSize:8, fontWeight:600, background:'rgba(108,138,255,.15)', color:'var(--accent)', marginTop:2 }}>{mySubject}</span></div>}
-                {(() => { const dm = dailyMessages.find((d: any) => d.user_id === profile.id); return dm ? <div style={{ background:'#0a1520', borderLeft:'2px solid var(--accent)', borderRadius:'0 4px 4px 0', padding:'2px 5px', fontSize:8, color:'#64748b', marginTop:3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{dm.content}</div> : null })()}
+                {(() => { const dm = dailyMessages.find((d: any) => d.user_id === profile.id); return dm ? <div className={styles.ssBubble}>💬 {dm.content}</div> : null })()}
               </div>
 
               {/* Other members */}
-              {(showPinnedFilter ? displayMembers.filter((m: any) => m.user_id !== profile.id && pinnedUserIds.includes(m.user_id)) : displayMembers.filter((m: any) => m.user_id !== profile.id))
-                .map((m, idx) => {
-                  const rs = remoteStreams.get(m.user_id)
-                  const mp = m.profiles as { display_name: string; avatar_url: string | null }
-                  const isAway = m.status === 'away'
-                  const isPinnedUser = isPinned(m.user_id)
-                  const color = SEAT_COLORS[(idx + 1) % SEAT_COLORS.length]
-                  const seatNum = `${seatRows[Math.floor((idx + 1) / 4)]}${(idx + 1) % 4 + 1}`
-                  const rxs = getReactionsFor(m.user_id)
-                  const dm = dailyMessages.find((d: any) => d.user_id === m.user_id)
-                  const memberSubject = m.current_task
-                  return (
-                    <div key={m.id} style={{ background:'var(--bg2)', border:`1px solid ${isPinnedUser?'#a78bfa':isAway?'#f59e0b':'var(--border)'}`, borderRadius:12, padding:'10px 8px', position:'relative', cursor:'default', transition:'.2s' }}
-                      className={styles.seatCard}>
-                      <div style={{ position:'absolute', top:5, left:7, fontSize:9, color:'#3a4060', fontWeight:600 }}>{seatNum}</div>
-                      {isPinnedUser && <div style={{ position:'absolute', top:4, right:4, fontSize:10 }}>📌</div>}
-                      {isAway && <div style={{ position:'absolute', top:6, left:'50%', transform:'translateX(-50%)', background:'rgba(245,158,11,.9)', borderRadius:4, padding:'2px 6px', fontSize:8, fontWeight:700, color:'#000', whiteSpace:'nowrap', zIndex:2 }}>😴 席外</div>}
-                      {rxs.length > 0 && <div style={{ position:'absolute', top:-8, right:6, display:'flex', gap:1 }}>{rxs.slice(-2).map((r,i) => <span key={i} style={{ fontSize:12 }}>{r.emoji}</span>)}</div>}
-                      <div style={{ background:'#080a0f', borderRadius:8, aspectRatio:'3/4', display:'flex', alignItems:'center', justifyContent:'center', marginBottom:6, position:'relative', overflow:'hidden' }}>
-                        {rs
-                          ? <video style={{ width:'100%', height:'100%', objectFit:'cover', borderRadius:8, background:'#000' }} ref={v => { if (v && v.srcObject !== rs) v.srcObject = rs }} autoPlay playsInline/>
-                          : <div style={{ width:52, height:52, borderRadius:'50%', background:`${color}22`, color, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, fontWeight:700, overflow:'hidden' }}>
-                              {mp.avatar_url ? <img src={mp.avatar_url} alt="" width={52} height={52} style={{ borderRadius:'50%' }}/> : mp.display_name[0]}
-                            </div>}
-                      </div>
-                      <div style={{ fontSize:12, color:'var(--muted2)', textAlign:'center', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{mp.display_name}</div>
-                      {memberSubject && <div style={{ textAlign:'center' }}><span style={{ display:'inline-block', padding:'1px 5px', borderRadius:3, fontSize:8, fontWeight:600, background:`${color}22`, color, marginTop:2 }}>{memberSubject}</span></div>}
-                      {dm && <div style={{ background:'#0a1520', borderLeft:`2px solid ${color}`, borderRadius:'0 4px 4px 0', padding:'2px 5px', fontSize:8, color:'#64748b', marginTop:3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{dm.content}</div>}
-                      <div className={styles.seatActions}>
-                        <button title={lang==='ja'?'リアクション':'React'} onClick={() => setReactionTarget({ userId:m.user_id, name:mp.display_name })} style={{ background:'transparent', border:'none', cursor:'pointer', fontSize:11 }}>😊</button>
-                        <button title={isPinnedUser?(lang==='ja'?'ピン解除':'Unpin'):(lang==='ja'?'ピン留め':'Pin')} onClick={() => togglePin(m.user_id)} style={{ background:'transparent', border:'none', cursor:'pointer', fontSize:11, opacity:isPinnedUser?1:.5 }}>📌</button>
-                        {displayFriends.some((f:any) => f.addressee_id === m.user_id) ? (
-                          <span title={lang==='ja'?'フレンド':'Friend'} style={{ fontSize:11 }}>✅</span>
-                        ) : pendingIn.some((p:any) => p.requester_id === m.user_id) ? (
-                          <span title={lang==='ja'?'申請中':'Pending'} style={{ fontSize:11 }}>⏳</span>
-                        ) : (
-                          <button title={lang==='ja'?'フレンド申請':'Add Friend'} onClick={async () => {
-                            const result = await sendFriendRequest(m.user_id)
-                            if (result === 'sent') {
-                              showToast(lang==='ja'?`👋 ${mp.display_name}さんにフレンド申請しました！`:`👋 Friend request sent to ${mp.display_name}!`)
-                              addNotif('👋', lang==='ja'?`${mp.display_name}さんにフレンド申請しました`:`Friend request sent to ${mp.display_name}`)
-                            } else {
-                              showToast(lang==='ja'?'既に申請済みです':'Already requested')
-                            }
-                          }} style={{ background:'transparent', border:'none', cursor:'pointer', fontSize:11 }}>➕</button>
-                        )}
-                        <button title={lang==='ja'?'報告':'Report'} onClick={() => setReportModal({ userId:m.user_id, name:mp.display_name })} style={{ background:'transparent', border:'none', cursor:'pointer', fontSize:11 }}>⚠️</button>
-                      </div>
-                    </div>
-                  )
-                })}
-
-              {/* Empty seats */}
-              {!showPinnedFilter && Array.from({ length: Math.min(emptySeats, 8 - displayMembers.length) }).map((_, i) => {
-                const idx = displayMembers.length + i
-                const seatNum = `${seatRows[Math.floor(idx / 4)]}${idx % 4 + 1}`
+              {filteredMembers.map((m, idx) => {
+                const rs = remoteStreams.get(m.user_id)
+                const mp = m.profiles as { display_name: string; avatar_url: string | null }
+                const isPinnedUser = isPinned(m.user_id)
+                const color = SEAT_COLORS[(idx + 1) % SEAT_COLORS.length]
+                const rxs = getReactionsFor(m.user_id)
+                const dm = dailyMessages.find((d: any) => d.user_id === m.user_id)
+                const memberSubject = m.current_task
+                const isFriend = displayFriends.some((f:any) => f.addressee_id === m.user_id)
+                const isPending = pendingIn.some((p:any) => p.requester_id === m.user_id)
                 return (
-                  <div key={`empty-${i}`} style={{ background:'var(--bg)', border:'1px dashed #1a1d24', borderRadius:12, padding:'10px 8px', opacity:.4 }}>
-                    <div style={{ fontSize:9, color:'#3a4060', fontWeight:600, marginBottom:6 }}>{seatNum}</div>
-                    <div style={{ background:'#0d0f16', borderRadius:8, height:52, display:'flex', alignItems:'center', justifyContent:'center', marginBottom:6 }}>
-                      <span style={{ color:'#2a2e3d', fontSize:20 }}>+</span>
+                  <div key={m.id} className={`${styles.ssTile} ${isPinnedUser?styles.ssTilePinned:''} ${m.status==='away'?styles.ssTileAway:''}`}>
+                    {rs
+                      ? <video className={styles.ssVideo} ref={v => { if (v && v.srcObject !== rs) v.srcObject = rs }} autoPlay playsInline/>
+                      : <div className={styles.ssTileOff}>
+                          <div className={styles.ssAvatar} style={{ background:`${color}22`, color }}>
+                            {mp.avatar_url ? <img src={mp.avatar_url} alt=""/> : mp.display_name[0]}
+                          </div>
+                        </div>}
+                    <div className={styles.ssTileTop}>
+                      <span className={`${styles.ssStatus} ${m.status==='studying'?styles.ssStatusStudy:m.status==='break'?styles.ssStatusBreak:styles.ssStatusAway}`}>
+                        {statusLabel(m.status)}
+                      </span>
+                      {isPinnedUser && <span className={styles.ssChip}>📌</span>}
+                      {rxs.length > 0 && <span className={styles.ssChip}>{rxs.slice(-3).map(r => r.emoji).join('')}</span>}
                     </div>
-                    <div style={{ fontSize:10, color:'#2a2e3d', textAlign:'center' }}>{T.emptyseat}</div>
+                    <div className={styles.ssTileActions}>
+                      <button title={lang==='ja'?'リアクション':'React'} onClick={() => setReactionTarget({ userId:m.user_id, name:mp.display_name })}>😊</button>
+                      <button title={isPinnedUser?(lang==='ja'?'ピン解除':'Unpin'):(lang==='ja'?'ピン留め':'Pin')} onClick={() => togglePin(m.user_id)} style={{ opacity:isPinnedUser?1:.6 }}>📌</button>
+                      {isFriend ? (
+                        <button title={lang==='ja'?'チャット':'Chat'} onClick={() => openChat(m.user_id)}>💬</button>
+                      ) : isPending ? (
+                        <button title={lang==='ja'?'申請中':'Pending'} disabled>⏳</button>
+                      ) : (
+                        <button title={lang==='ja'?'フレンド申請':'Add Friend'} onClick={async () => {
+                          const result = await sendFriendRequest(m.user_id)
+                          if (result === 'sent') {
+                            showToast(lang==='ja'?`👋 ${mp.display_name}さんにフレンド申請しました！`:`👋 Friend request sent to ${mp.display_name}!`)
+                            addNotif('👋', lang==='ja'?`${mp.display_name}さんにフレンド申請しました`:`Friend request sent to ${mp.display_name}`)
+                          } else {
+                            showToast(lang==='ja'?'既に申請済みです':'Already requested')
+                          }
+                        }}>➕</button>
+                      )}
+                      <button title={lang==='ja'?'報告':'Report'} onClick={() => setReportModal({ userId:m.user_id, name:mp.display_name })}>⚠️</button>
+                    </div>
+                    <div className={styles.ssTileBottom}>
+                      <span className={styles.ssName}>{mp.display_name}</span>
+                      {memberSubject && <span className={styles.ssChip} style={{ color }}>{memberSubject}</span>}
+                    </div>
+                    {dm && <div className={styles.ssBubble}>💬 {dm.content}</div>}
                   </div>
                 )
               })}
+
+              {/* Invite tile when the room is quiet */}
+              {!showPinnedFilter && filteredMembers.length < 3 && (
+                <div className={`${styles.ssTile} ${styles.ssTileEmpty}`}>
+                  <div className={styles.ssTileOff}>
+                    <div style={{ fontSize:28, opacity:.5 }}>🪑</div>
+                    <div style={{ fontSize:12, color:'var(--muted)' }}>{lang==='ja'?'もうすぐ誰かが来るかも…':'Someone may join soon…'}</div>
+                    <button className={styles.ssCamCta} onClick={() => togglePanel('rooms')}>🏠 {lang==='ja'?'他のルームを見る':'Browse rooms'}</button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Rooms */}
-          <div>
-            <div className={styles.secLabel} style={{ marginBottom:10 }}>🏠 ルーム一覧</div>
-            <div className={styles.roomsGrid}>
-              {allRooms.map((r: any) => (
-                <div key={r.id} className={`${styles.roomCard} ${r.id===room.id?styles.roomCardActive:''}`} onClick={() => router.push(`/room/${r.id}`)}>
-                  <div className={styles.roomName}>{r.emoji} {r.name}</div>
-                  <div className={styles.roomDesc}>{r.description}</div>
-                </div>
-              ))}
+          {/* DOCK */}
+          <div className={styles.ssDock}>
+            <button className={`${styles.ssDockBtn} ${cameraOn?styles.ssDockOn:styles.ssDockOff}`} onClick={() => setCameraOn(v => !v)} title={cameraOn?T.cameraOn:T.cameraOff}>
+              <span className={styles.ssDockIcon}>📷</span>
+              <span className={styles.ssDockLbl}>{cameraOn?(lang==='ja'?'カメラON':'Cam on'):(lang==='ja'?'カメラOFF':'Cam off')}</span>
+            </button>
+            <div className={`${styles.ssDockBtn} ${styles.ssDockOff}`} title={T.noTalk} style={{ cursor:'default' }}>
+              <span className={styles.ssDockIcon}>🔇</span>
+              <span className={styles.ssDockLbl}>{lang==='ja'?'マイク禁止':'No mic'}</span>
             </div>
+            <div className={styles.ssDockSep}/>
+            {DOCK_PANELS.map(p => {
+              const badge = p.id === 'friends' ? pendingIn.length + Object.values(unreadCounts).reduce((a, b) => a + b, 0) : 0
+              return (
+                <button key={p.id} className={`${styles.ssDockBtn} ${panel===p.id?styles.ssDockActive:''}`} onClick={() => togglePanel(p.id)}>
+                  <span className={styles.ssDockIcon}>{p.icon}{badge > 0 && <span className={styles.ssDockBadge}>{badge}</span>}</span>
+                  <span className={styles.ssDockLbl}>{lang==='ja'?p.ja:p.en}</span>
+                </button>
+              )
+            })}
+            <div className={styles.ssDockSep}/>
+            <button className={`${styles.ssDockBtn} ${showPinnedFilter?styles.ssDockActive:''}`} onClick={() => setShowPinnedFilter(v => !v)} title={T.pinnedOnly}>
+              <span className={styles.ssDockIcon}>📌</span>
+              <span className={styles.ssDockLbl}>{lang==='ja'?'ピン':'Pinned'}</span>
+            </button>
+            <button className={styles.ssDockBtn} onClick={() => setZen(true)} title={lang==='ja'?'集中モード (Esc で戻る)':'Focus mode (Esc to exit)'}>
+              <span className={styles.ssDockIcon}>🧘</span>
+              <span className={styles.ssDockLbl}>{lang==='ja'?'集中':'Focus'}</span>
+            </button>
+            <button className={`${styles.ssDockBtn} ${styles.ssDockLeave}`} onClick={leaveRoom}>
+              <span className={styles.ssDockIcon}>🚪</span>
+              <span className={styles.ssDockLbl}>{T.leaveRoom}</span>
+            </button>
           </div>
+
+          {/* ZEN / FOCUS MODE */}
+          {zen && (
+            <div className={styles.ssZen} onClick={() => setZen(false)}>
+              <div className={styles.ssZenMode}>{timerModeLabel}</div>
+              <div className={styles.ssZenDigits}>{fmtTime(timer.seconds)}</div>
+              <div className={styles.ssZenTask}>{currentTask}</div>
+              <div className={styles.ssZenBtns} onClick={e => e.stopPropagation()}>
+                <button className={styles.btnStart} onClick={timer.toggle}>{timer.running?T.pause:T.start}</button>
+                <button className={styles.btnReset} onClick={() => setZen(false)}>✕ {lang==='ja'?'戻る':'Exit'}</button>
+              </div>
+              <div className={styles.ssZenHint}>{studyingCount}{lang==='ja'?'人があなたと一緒に集中しています':' people are focusing with you'}</div>
+            </div>
+          )}
         </main>
 
-        {/* RIGHT SIDEBAR */}
-        <aside className={styles.sr}>
+        {/* DRAWER */}
+        <aside className={`${styles.ssDrawer} ${panel || chatFriendId ? styles.ssDrawerOpen : ''}`}>
           {chatFriendId && chatFriendProfile ? (
             <div className={styles.chatWrap}>
               <div className={styles.chatHeader}>
@@ -1201,19 +1073,88 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                 <button className={styles.chatSend} onClick={handleSendMsg}>{T.send}</button>
               </div>
             </div>
-          ) : (
+          ) : panel && (
             <>
-              <div className={styles.srTabs}>
-                {(['stats','bgm','activity','schedule'] as const).map((tab,i) => (
-                  <button key={tab} className={`${styles.srTab} ${activeTab===tab?styles.srTabActive:''}`} onClick={() => setActiveTab(tab)}>
-                    <span style={{ fontSize:13 }}>{['📊','🎵','🔔','📅'][i]}</span>
-                    <span style={{ fontSize:9, display:'block', marginTop:1 }}>{['統計','BGM','通知','予定'][i]}</span>
-                  </button>
-                ))}
+              <div className={styles.ssDrawerHead}>
+                <span>{DOCK_PANELS.find(p => p.id === panel)?.icon} {lang==='ja'?DOCK_PANELS.find(p => p.id === panel)?.ja:DOCK_PANELS.find(p => p.id === panel)?.en}</span>
+                <button className={styles.chatClose} onClick={() => setPanel(null)}>✕</button>
               </div>
               <div className={styles.srPanel}>
 
-                {activeTab==='stats' && (
+                {panel==='timer' && (
+                  <>
+                    <div>
+                      <div className={styles.timerModes}>
+                        {(['focus','short','long'] as const).map((m,i) => (
+                          <button key={m} className={`${styles.modeBtn} ${timer.mode===m?styles.modeBtnActive:''}`} onClick={() => timer.switchMode(m)}>
+                            {['集中','小休憩','長休憩'][i]}
+                          </button>
+                        ))}
+                        <button className={`${styles.modeBtn} ${timer.mode==='custom'?styles.modeBtnActive:''}`}
+                          onClick={() => setShowCustomTimer(true)}>カスタム</button>
+                      </div>
+                      {timer.mode === 'custom' && (
+                        <div style={{ textAlign:'center', fontSize:11, color:'var(--accent)', marginBottom:6 }}>
+                          集中{timer.customFocusMins}分 / 休憩{timer.customBreakMins}分
+                          <button onClick={() => setShowCustomTimer(true)} style={{ marginLeft:6, fontSize:10, color:'var(--muted)', background:'transparent', border:'none', cursor:'pointer' }}>変更</button>
+                        </div>
+                      )}
+                      <div className={styles.ringWrap}>
+                        <svg className={styles.timerRing} width="170" height="170" viewBox="0 0 110 110">
+                          <defs>
+                            <linearGradient id="rg" x1="0%" y1="0%" x2="100%" y2="100%">
+                              <stop offset="0%" stopColor="#6c8aff"/><stop offset="100%" stopColor="#a78bfa"/>
+                            </linearGradient>
+                          </defs>
+                          <circle className={styles.ringBg} cx="55" cy="55" r="50"/>
+                          <circle className={styles.ringProg} cx="55" cy="55" r="50" strokeDasharray="314.2" strokeDashoffset={314.2 - timer.progress * 314.2}/>
+                        </svg>
+                        <div className={styles.ringInner}>
+                          <div className={styles.timerDigits}>{fmtTime(timer.seconds)}</div>
+                          <div className={styles.timerLbl}>{timerModeLabel}</div>
+                        </div>
+                      </div>
+                      <div className={styles.timerCtrl}>
+                        <button className={styles.btnStart} onClick={timer.toggle}>{timer.running?T.pause:T.start}</button>
+                        <button className={styles.btnReset} onClick={timer.reset}>↺</button>
+                      </div>
+                      <div className={styles.pomoDots}>
+                        {[0,1,2,3].map((i: any) => <div key={i} className={`${styles.pdot} ${i<(timer.pomosCompleted%4)?styles.pdotDone:''}`}/>)}
+                      </div>
+                      <div style={{ textAlign:'center', fontSize:11, color:'var(--muted)', marginTop:8 }}>{lang==='ja'?'セッション':'Session'} {timer.sessionCount} / 4</div>
+                    </div>
+                    <div>
+                      <div className={styles.secLabel}>{lang==='ja'?'🎯 勉強科目':'🎯 Subject'}</div>
+                      <button onClick={() => setShowSubjectPicker(true)} style={{ width:'100%', padding:'8px 12px', background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:8, color:mySubject?'var(--accent)':'var(--muted)', fontSize:12, cursor:'pointer', fontFamily:'inherit', textAlign:'left', transition:'.2s' }}>
+                        {mySubject || '科目を選択...'} ▾
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {panel==='tasks' && (
+                  <>
+                    <div>
+                      <div className={styles.secLabel}>{lang==='ja'?'💬 今日の一言':'💬 Status message'}</div>
+                      <div style={{ display:'flex', gap:6 }}>
+                        <input placeholder={lang==='ja'?'今日の一言を投稿...':'Share what you are working on...'}
+                          value={dailyMsgInput} onChange={e => setDailyMsgInput(e.target.value)}
+                          onKeyDown={e => { if (e.key==='Enter') { saveDailyMessage(dailyMsgInput); setDailyMsgInput('') } }}
+                          className={styles.tInput}/>
+                        <button onClick={() => { saveDailyMessage(dailyMsgInput); setDailyMsgInput('') }} className={styles.chatSend}>{lang==='ja'?'投稿':'Post'}</button>
+                      </div>
+                    </div>
+                    <div>
+                      <div className={styles.secLabel}>{lang==='ja'?'✅ タスク':'✅ Tasks'}</div>
+                      <TaskPanel userId={profile.id} roomId={room.id} tasks={tasks}
+                        onAddTask={addTask} onCompleteTask={completeTask} onDeleteTask={deleteTask}
+                        onUpdateShare={updateTaskShareLocal}
+                        friends={friendsForTaskPanel}/>
+                    </div>
+                  </>
+                )}
+
+                {panel==='stats' && (
                   <>
                     <div>
                       <div className={styles.secLabel}>{T.today}</div>
@@ -1262,13 +1203,26 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                       )}
                     </div>
                     <div>
+                      <div className={styles.secLabel}>🏆 {lang==='ja'?'ルーム内ランキング':'Room leaderboard'}</div>
+                      <div className={styles.ssLeader}>
+                        {leaderboard.map((m: any, i) => (
+                          <div key={m.id} className={`${styles.ssLeaderRow} ${m.user_id===profile.id?styles.ssLeaderMe:''}`}>
+                            <span className={styles.ssLeaderRank}>{['🥇','🥈','🥉'][i] ?? i + 1}</span>
+                            <span className={styles.ssLeaderName}>{m.profiles?.display_name ?? '—'}</span>
+                            <span className={styles.ssLeaderTime}>{fmtStudyTime(m.study_seconds ?? 0)}</span>
+                          </div>
+                        ))}
+                        {leaderboard.length===0 && <div style={{ fontSize:11, color:'var(--muted)', textAlign:'center', padding:'8px 0' }}>{lang==='ja'?'まだデータがありません':'No data yet'}</div>}
+                      </div>
+                    </div>
+                    <div>
                       <div className={styles.secLabel}>{T.quote}</div>
                       <div className={styles.quoteBox}>「{quote.text}」<div className={styles.quoteAuthor}>— {quote.author}</div></div>
                     </div>
                   </>
                 )}
 
-                {activeTab==='bgm' && (
+                {panel==='music' && (
                   <>
                     <div className={styles.bgmList}>
                       {BGM_TRACKS.map((t: any) => (
@@ -1288,7 +1242,68 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                   </>
                 )}
 
-                {activeTab==='activity' && (
+                {panel==='friends' && (
+                  <>
+                    {pendingIn.length > 0 && (
+                      <div>
+                        {pendingIn.map((req: any) => {
+                          const rp = req.profiles
+                          return (
+                            <div key={req.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 10px', background:'rgba(108,138,255,.08)', border:'1px solid rgba(108,138,255,.3)', borderRadius:8, marginBottom:5 }}>
+                              <div style={{ width:28, height:28, borderRadius:'50%', background:'var(--accent)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:700, flexShrink:0, overflow:'hidden' }}>
+                                {rp?.avatar_url ? <img src={rp.avatar_url} width={28} height={28} style={{ borderRadius:'50%' }} alt=""/> : rp?.display_name?.[0]}
+                              </div>
+                              <div style={{ flex:1, minWidth:0 }}>
+                                <div style={{ fontSize:12, fontWeight:600 }}>{rp?.display_name}</div>
+                                <div style={{ fontSize:10, color:'var(--muted)' }}>{lang==='ja'?'フレンド申請が届いています':'Friend request'}</div>
+                              </div>
+                              <button onClick={() => { acceptFriendRequest(req.id); showToast(lang==='ja'?`✅ ${rp?.display_name}さんとフレンドになりました`:`✅ Now friends with ${rp?.display_name}`) }}
+                                style={{ padding:'4px 10px', background:'var(--accent)', border:'none', borderRadius:6, color:'#fff', fontSize:11, cursor:'pointer', fontFamily:'inherit', fontWeight:600 }}>
+                                {lang==='ja'?'承認':'Accept'}
+                              </button>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                    <div className={styles.friendList}>
+                      {displayFriends.map((f: any) => {
+                        const fp = f.profiles as Profile
+                        const unread = unreadCounts[f.addressee_id] || 0
+                        return (
+                          <div key={f.id} className={styles.friendItem} onClick={() => openChat(f.addressee_id)}>
+                            <div className={styles.friendAvatar}>
+                              {fp.avatar_url ? <img src={fp.avatar_url} alt="" width={30} height={30} style={{ borderRadius:'50%', objectFit:'cover' }}/> : fp.display_name[0]}
+                              <div className={styles.friendDot}/>
+                            </div>
+                            <div className={styles.friendInfo}>
+                              <div className={styles.friendName}>{fp.display_name}{unread>0&&<span className={styles.unreadBadge}>{unread}</span>}</div>
+                              <div className={styles.friendMeta}>勉強中</div>
+                            </div>
+                            <div className={styles.friendActions}>
+                              <button className={`${styles.faBtn} ${styles.faBtnChat}`} onClick={e => { e.stopPropagation(); openChat(f.addressee_id) }}>💬</button>
+                              <button className={`${styles.faBtn} ${styles.faBtnBlock}`} onClick={e => { e.stopPropagation(); setBlockModal({ userId:f.addressee_id, name:fp.display_name }) }}>🚫</button>
+                            </div>
+                          </div>
+                        )
+                      })}
+                      {displayFriends.length===0&&<div style={{ fontSize:11, color:'var(--muted)', textAlign:'center', padding:'12px 0' }}>{T.noFriends}</div>}
+                    </div>
+                  </>
+                )}
+
+                {panel==='rooms' && (
+                  <div className={styles.ssRoomList}>
+                    {allRooms.map((r: any) => (
+                      <div key={r.id} className={`${styles.roomCard} ${r.id===room.id?styles.roomCardActive:''}`} onClick={() => r.id !== room.id && router.push(`/room/${r.id}`)}>
+                        <div className={styles.roomName}>{r.emoji} {r.name}{r.id===room.id && <span style={{ marginLeft:6, fontSize:10, color:'var(--accent3)' }}>● {lang==='ja'?'入室中':'Here'}</span>}</div>
+                        <div className={styles.roomDesc}>{r.description}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {panel==='activity' && (
                   <div className={styles.notifList}>
                     {notifications.map((n,i) => (
                       <div key={i} className={styles.notifItem}>
@@ -1299,7 +1314,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                   </div>
                 )}
 
-                {activeTab==='safety' && (
+                {panel==='safety' && (
                   <SafetyPanel
                     userId={profile.id}
                     cameraOn={cameraOn}
@@ -1317,7 +1332,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                   />
                 )}
 
-                {activeTab==='schedule' && (
+                {panel==='schedule' && (
                   <>
                     <button onClick={() => setShowScheduler(true)} style={{ width:'100%', padding:'9px', background:'var(--accent)', border:'none', borderRadius:8, color:'#fff', fontSize:12, cursor:'pointer', fontFamily:'inherit', marginBottom:10 }}>
                       + セッションを予約する

@@ -60,6 +60,7 @@ type Props = {
   onAwayEnabledChange: (v: boolean) => void
   onAwayMinutesChange: (v: number) => void
   cameraOnForSafety: boolean
+  userId: string
 }
 
 const BGM_TRACKS = [
@@ -499,7 +500,7 @@ export default function MobileScreens({
                 className={`${styles.bgmItem} ${bgmPlaying === t.id ? styles.bgmPlaying : ''}`}
                 onClick={() => onToggleBgm(t.id)}>
                 <span style={{ fontSize: 16 }}>{t.icon}</span>
-                <span style={{ flex: 1, fontSize: 13, color: 'var(--muted2)' }}>{t.name}</span>
+                <span style={{ flex: 1, fontSize: 13, color: 'var(--muted2)' }}>{lang === 'ja' ? t.nameJa : t.nameEn}</span>
                 <div className={styles.bgmPlay}>{bgmPlaying === t.id ? '♪' : '▶'}</div>
               </div>
             ))}
