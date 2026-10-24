@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 import RoomClient from '@/components/room/RoomClient'
+import { getMyStats } from '@/lib/studyTime'
 
 export default async function RoomPage({ params }: { params: Promise<{ roomId: string }> }) {
   const { roomId } = await params
@@ -45,15 +46,8 @@ export default async function RoomPage({ params }: { params: Promise<{ roomId: s
   const { data: friendships } = await supabase.from('friendships').select('*, profiles!friendships_addressee_id_fkey(id, display_name, avatar_url)').eq('requester_id', userId).eq('status', 'accepted')
   const { data: tasks } = await supabase.from('tasks').select('*').eq('user_id', userId).eq('completed', false).order('created_at', { ascending: false }).limit(20)
 
-  let weeklyStats: { day_of_week: number; total_seconds: number }[] = []
-  try {
-    const { data } = await (supabase as any).rpc('get_weekly_stats', { target_user_id: userId })
-    if (Array.isArray(data)) {
-      weeklyStats = data.map((d: any) => ({ day_of_week: Number(d.day_of_week ?? 0), total_seconds: Number(d.total_seconds ?? 0) }))
-    }
-  } catch {}
+  const initialStats = await getMyStats(adminClient, userId)
 
-  // Also delete Archiv.zip if exists
   return (
     <RoomClient
       profile={JSON.parse(JSON.stringify(profile))}
@@ -62,7 +56,7 @@ export default async function RoomPage({ params }: { params: Promise<{ roomId: s
       initialMembers={JSON.parse(JSON.stringify(members ?? []))}
       initialFriends={JSON.parse(JSON.stringify(friendships ?? []))}
       initialTasks={JSON.parse(JSON.stringify(tasks ?? []))}
-      weeklyStats={weeklyStats}
+      initialStats={initialStats}
     />
   )
 }

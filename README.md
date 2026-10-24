@@ -20,6 +20,7 @@ npm install
 3. 左メニュー **SQL Editor** を開く
 4. `supabase/schema.sql` の内容を全コピペして **Run** 実行
 5. 続けて `supabase/migration_task_sharing.sql` も同様に実行
+6. 続けて `supabase/migration_ranking.sql` も実行（勉強時間ランキング）
 
 ---
 

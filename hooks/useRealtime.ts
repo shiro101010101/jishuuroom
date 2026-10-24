@@ -34,34 +34,22 @@ export function useRoomRealtime(roomId: string, userId: string) {
     }
     joinRoom()
 
-    // Auto-leave when tab/window closes
+    // Auto-leave when tab/window closes (cookie 認証の API 経由)
     const leaveRoom = () => {
-      navigator.sendBeacon(
-        `https://${process.env.NEXT_PUBLIC_SUPABASE_URL?.split('//')[1]}/rest/v1/room_members?room_id=eq.${roomId}&user_id=eq.${userId}`,
-        ''
-      )
+      navigator.sendBeacon('/api/room/leave', JSON.stringify({ roomId }))
     }
-    window.addEventListener('beforeunload', leaveRoom)
+    window.addEventListener('pagehide', leaveRoom)
 
-    // Increment study_seconds every 60s while page is open
-    studyIntervalRef.current = setInterval(async () => {
-      await (supabase as any).rpc('update_last_seen')
-      // raw SQL increment via RPC
-      await supabase
-        .from('room_members')
-        .update({ study_seconds: (members.find(m => m.user_id === userId)?.study_seconds ?? 0) + 60 })
-        .eq('room_id', roomId)
-        .eq('user_id', userId)
+    // 勉強時間は /api/study/heartbeat が記録する。ここでは最終アクセスだけ更新
+    studyIntervalRef.current = setInterval(() => {
+      ;(supabase as any).rpc('update_last_seen').then(() => {}, () => {})
     }, 60_000)
 
     // Leave on unmount
     return () => {
       if (studyIntervalRef.current) clearInterval(studyIntervalRef.current)
-      window.removeEventListener('beforeunload', leaveRoom)
-      ;(supabase as any).from('room_members')
-        .delete()
-        .eq('room_id', roomId)
-        .eq('user_id', userId)
+      window.removeEventListener('pagehide', leaveRoom)
+      fetch('/api/room/leave', { method: 'POST', body: JSON.stringify({ roomId }), keepalive: true }).catch(() => {})
     }
   }, [roomId, userId])
 

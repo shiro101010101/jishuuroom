@@ -13,6 +13,10 @@ import { useFaceDetection } from '@/hooks/useFaceDetection'
 import SafetyPanel from './SafetyPanel'
 import { translations, type Lang } from '@/lib/i18n'
 import TimelineCalendar from './TimelineCalendar'
+import RankingPanel from './RankingPanel'
+import { usePresence } from '@/hooks/usePresence'
+import { useStudyTracker } from '@/hooks/useStudyTracker'
+import type { MyStats } from '@/lib/studyTime'
 import type { Profile, Room, RoomMember, Task, Friendship } from '@/lib/supabase/types'
 import styles from './RoomClient.module.css'
 
@@ -23,7 +27,7 @@ type Props = {
   initialMembers: (RoomMember & { profiles: { display_name: string; avatar_url: string | null } })[]
   initialFriends: (Friendship & { profiles: Profile })[]
   initialTasks: Task[]
-  weeklyStats: { day_of_week: number; total_seconds: number }[]
+  initialStats: MyStats
 }
 
 const SUBJECTS = ['数学','英語','国語','理科','社会','物理','化学','生物','歴史','地理','プログラミング','英会話','資格勉強','その他']
@@ -49,12 +53,13 @@ const WORD_FILTERS = [
   'キモい', 'デブ', 'ブス', 'キショい',
 ]
 const SEAT_COLORS = ['#6c8aff','#a78bfa','#34d399','#f59e0b','#f87171','#fbbf24','#60a5fa','#fb7185','#4ade80','#facc15']
-type PanelId = 'timer' | 'tasks' | 'music' | 'stats' | 'friends' | 'schedule' | 'rooms' | 'activity' | 'safety'
+type PanelId = 'timer' | 'tasks' | 'music' | 'stats' | 'ranking' | 'friends' | 'schedule' | 'rooms' | 'activity' | 'safety'
 const DOCK_PANELS: { id: PanelId; icon: string; ja: string; en: string }[] = [
   { id: 'timer',    icon: '⏱', ja: 'タイマー', en: 'Timer' },
   { id: 'tasks',    icon: '✅', ja: 'タスク',   en: 'Tasks' },
   { id: 'music',    icon: '🎵', ja: 'BGM',      en: 'Music' },
   { id: 'stats',    icon: '📊', ja: '統計',     en: 'Stats' },
+  { id: 'ranking',  icon: '🏆', ja: 'ランキング', en: 'Ranking' },
   { id: 'friends',  icon: '👥', ja: 'フレンド', en: 'Friends' },
   { id: 'schedule', icon: '📅', ja: '予定',     en: 'Schedule' },
   { id: 'rooms',    icon: '🏠', ja: 'ルーム',   en: 'Rooms' },
@@ -62,7 +67,7 @@ const DOCK_PANELS: { id: PanelId; icon: string; ja: string; en: string }[] = [
   { id: 'safety',   icon: '🛡️', ja: '安全設定', en: 'Safety' },
 ]
 
-export default function RoomClient({ profile, room, allRooms, initialMembers, initialFriends, initialTasks, weeklyStats }: Props) {
+export default function RoomClient({ profile, room, allRooms, initialMembers, initialFriends, initialTasks, initialStats }: Props) {
   const router = useRouter()
   const supabase = createClient()
 
@@ -70,8 +75,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
   const timer = useTimer(() => {
     showToast('🍅 ポモドーロ完了！お疲れさまでした')
     addNotif('🍅', 'ポモドーロを完了しました！')
-    saveStudySession()
-    ;(supabase as any).rpc('update_streak')
+    markPomodoro()
   })
   const [cameraOn, setCameraOn] = useState(false)
   const { localStream, remoteStreams } = useWebRTC(room.id, profile.id, cameraOn)
@@ -90,7 +94,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
     noFaceThreshold
   )
   const { members, updateStatus } = useRoomRealtime(room.id, profile.id)
-  const displayMembers = members.length > 0 ? members : initialMembers
+  const rawMembers = members.length > 0 ? members : initialMembers
   const { friends, pendingIn, unreadCounts, blockUser, reportUser, acceptFriendRequest, sendFriendRequest, newFriendRequest, setNewFriendRequest } = useFriends(profile.id)
   const displayFriends = friends.length > 0 ? friends : initialFriends
   const {
@@ -100,10 +104,12 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
   } = useInteractions(profile.id, room.id)
 
   // ── Stats ──
-  const [todaySeconds, setTodaySeconds] = useState(profile.total_study_seconds ?? 0)
-  const [pomosToday, setPomosToday] = useState(0)
+  const [todaySeconds, setTodaySeconds] = useState(initialStats.todaySeconds)
+  const [pomosToday, setPomosToday] = useState(initialStats.pomosToday)
   const [tasksDoneToday, setTasksDoneToday] = useState(0)
-  const [streak, setStreak] = useState(profile.study_streak ?? 0)
+  const [streak, setStreak] = useState(initialStats.streak)
+  const [weeklyStats, setWeeklyStats] = useState(initialStats.week)
+  const [rankRefresh, setRankRefresh] = useState(0)
   const [statView, setStatView] = useState<'week' | 'month'>('week')
   const [monthStats, setMonthStats] = useState<{ day: number; total_seconds: number }[]>([])
 
@@ -171,7 +177,6 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
   const [awayCountdown, setAwayCountdown] = useState(60)
   const [awayEnabled, setAwayEnabled] = useState(false)
   const [awayMinutes, setAwayMinutes] = useState(5)
-  const [onlineCount, setOnlineCount] = useState(247)
   const [currentTime, setCurrentTime] = useState('')
   const [quote, setQuote] = useState(QUOTES[0])
   const [showPinnedFilter, setShowPinnedFilter] = useState(false)
@@ -182,7 +187,6 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
   const bgmCtxRef = useRef<AudioContext | null>(null)
   const bgmGainRef = useRef<GainNode | null>(null)
   const bgmNodesRef = useRef<AudioNode[]>([])
-  const sessionStartRef = useRef(new Date().toISOString())
 
   // ── Effects ──
   useEffect(() => {
@@ -206,10 +210,17 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
     }, 30_000)
     return () => clearInterval(t)
   }, [timer.running, timer.mode, awayModal, awayEnabled, awayMinutes])
-  useEffect(() => {
-    const t = setInterval(() => setOnlineCount(c => Math.max(200, c + Math.floor(Math.random() * 6 - 3))), 15_000)
-    return () => clearInterval(t)
-  }, [])
+  // 勉強時間の記録（サーバー側で計測）と本物のオンライン人数
+  const isFocusing = timer.running && (timer.mode === 'focus' || timer.mode === 'custom') && !awayModal
+  const { markPomodoro } = useStudyTracker(room.id, isFocusing, (s) => {
+    setTodaySeconds(s.todaySeconds); setPomosToday(s.pomosToday); setStreak(s.streak)
+    setWeeklyStats(s.week); setRankRefresh(k => k + 1)
+  })
+  const presence = usePresence(profile.id, room.id, isFocusing)
+  // Presence 同期後は、実際に接続している人だけを表示（閉じ忘れの幽霊メンバーを除外）
+  const displayMembers = presence.synced
+    ? rawMembers.filter((m: any) => presence.roomUserIds.has(m.user_id))
+    : rawMembers
   useEffect(() => { updateStatus(timer.mode === 'short' || timer.mode === 'long' ? 'break' : 'studying', currentTask, cameraOn) }, [cameraOn, timer.mode, currentTask])
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [chatMessages])
   useEffect(() => {
@@ -225,10 +236,10 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
 
   // Live study counter
   useEffect(() => {
-    if (!timer.running || timer.mode !== 'focus') return
+    if (!isFocusing) return
     const t = setInterval(() => setTodaySeconds(s => s + 1), 1000)
     return () => clearInterval(t)
-  }, [timer.running, timer.mode])
+  }, [isFocusing])
 
   // Fetch scheduled sessions
   useEffect(() => {
@@ -356,16 +367,6 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
   async function deleteTask(taskId: string) {
     await (supabase as any).from('tasks').delete().eq('id', taskId)
     setTasks(prev => prev.filter((t: any) => t.id !== taskId))
-  }
-  async function saveStudySession() {
-    await (supabase as any).from('study_sessions').insert({
-      user_id: profile.id, room_id: room.id,
-      started_at: sessionStartRef.current, ended_at: new Date().toISOString(),
-      duration_seconds: timer.customFocusMins * 60 || 25 * 60, pomodoros_completed: 1,
-    })
-    await (supabase as any).from('profiles').update({ total_study_seconds: todaySeconds }).eq('id', profile.id)
-    setPomosToday(p => p + 1); setStreak(s => s + 1)
-    sessionStartRef.current = new Date().toISOString()
   }
   async function changeSubject(s: string) {
     setMySubject(s); setShowSubjectPicker(false)
@@ -583,7 +584,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
   function togglePanel(id: PanelId) { setChatFriendId(null); setPanel(p => p === id ? null : id) }
   function openChat(friendId: string) { setPanel('friends'); setChatFriendId(friendId) }
   async function leaveRoom() {
-    await (supabase as any).from('room_members').delete().eq('room_id', room.id).eq('user_id', profile.id)
+    await fetch('/api/room/leave', { method: 'POST', body: JSON.stringify({ roomId: room.id }) }).catch(() => {})
     router.push('/')
   }
 
@@ -627,7 +628,6 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
   const myStatus: 'studying' | 'break' | 'away' = awayModal ? 'away' : timer.mode === 'short' || timer.mode === 'long' ? 'break' : 'studying'
   const statusLabel = (st: string) => st === 'studying' ? (lang==='ja'?'● 集中中':'● Focusing') : st === 'break' ? (lang==='ja'?'☕ 休憩中':'☕ Break') : (lang==='ja'?'😴 離席':'😴 Away')
   const timerModeLabel = timer.mode==='focus'?'集中モード':timer.mode==='short'?'小休憩':timer.mode==='long'?'長休憩':'カスタム'
-  const leaderboard = [...displayMembers].sort((a: any, b: any) => (b.study_seconds ?? 0) - (a.study_seconds ?? 0)).slice(0, 10)
 
   return (
     <div className={styles.root}>
@@ -846,7 +846,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
           <span>{lang==='ja'?'自習室 JP':'Study With Me JP'}</span>
         </div>
         <div className={styles.headerCenter}>
-          <div className={styles.onlineBadge}><span className={styles.liveDot}/>{onlineCount}{lang==='ja'?'人が勉強中':' studying now'}</div>
+          <div className={styles.onlineBadge}><span className={styles.liveDot}/>{presence.studyingCount}{lang==='ja'?'人が勉強中':' studying now'} · {presence.onlineCount}{lang==='ja'?'人オンライン':' online'}</div>
         </div>
         <div className={styles.headerRight}>
           <div className={styles.clock}>{currentTime}</div>
@@ -1203,23 +1203,14 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                       )}
                     </div>
                     <div>
-                      <div className={styles.secLabel}>🏆 {lang==='ja'?'ルーム内ランキング':'Room leaderboard'}</div>
-                      <div className={styles.ssLeader}>
-                        {leaderboard.map((m: any, i) => (
-                          <div key={m.id} className={`${styles.ssLeaderRow} ${m.user_id===profile.id?styles.ssLeaderMe:''}`}>
-                            <span className={styles.ssLeaderRank}>{['🥇','🥈','🥉'][i] ?? i + 1}</span>
-                            <span className={styles.ssLeaderName}>{m.profiles?.display_name ?? '—'}</span>
-                            <span className={styles.ssLeaderTime}>{fmtStudyTime(m.study_seconds ?? 0)}</span>
-                          </div>
-                        ))}
-                        {leaderboard.length===0 && <div style={{ fontSize:11, color:'var(--muted)', textAlign:'center', padding:'8px 0' }}>{lang==='ja'?'まだデータがありません':'No data yet'}</div>}
-                      </div>
-                    </div>
-                    <div>
                       <div className={styles.secLabel}>{T.quote}</div>
                       <div className={styles.quoteBox}>「{quote.text}」<div className={styles.quoteAuthor}>— {quote.author}</div></div>
                     </div>
                   </>
+                )}
+
+                {panel==='ranking' && (
+                  <RankingPanel userId={profile.id} roomId={room.id} lang={lang} refreshKey={rankRefresh}/>
                 )}
 
                 {panel==='music' && (
@@ -1468,6 +1459,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
           onAwayMinutesChange={setAwayMinutes}
           cameraOnForSafety={cameraOn}
           userId={profile.id}
+          rankRefresh={rankRefresh}
         />
       </div>
 

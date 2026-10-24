@@ -8,6 +8,7 @@ import type { Profile, Room, RoomMember, Task, Friendship } from '@/lib/supabase
 import type { useTimer } from '@/hooks/useTimer'
 import type { SharedTask, StudyPair } from '@/hooks/useTaskSharing'
 import SafetyPanel from './SafetyPanel'
+import RankingPanel from './RankingPanel'
 import styles from './MobileScreens.module.css'
 
 type TimerState = ReturnType<typeof useTimer>
@@ -61,6 +62,7 @@ type Props = {
   onAwayMinutesChange: (v: number) => void
   cameraOnForSafety: boolean
   userId: string
+  rankRefresh?: number
 }
 
 const BGM_TRACKS = [
@@ -92,6 +94,7 @@ export default function MobileScreens({
   onAwayEnabledChange, onAwayMinutesChange,
   cameraOnForSafety,
   userId,
+  rankRefresh = 0,
 }: Props) {
   const router = useRouter()
   const [quote, setQuote] = useState(QUOTES[0])
@@ -473,6 +476,11 @@ export default function MobileScreens({
             <div className={styles.statVal}>{members.length}</div>
             <div className={styles.statSub}>同室人数</div>
           </div>
+        </div>
+
+        <div className={styles.section}>
+          <div className={styles.secLabel}>{lang==='ja'?'🏆 勉強時間ランキング':'🏆 Study Ranking'}</div>
+          {activeScreen === 'stats' && <RankingPanel userId={userId} roomId={room.id} lang={lang} refreshKey={rankRefresh}/>}
         </div>
 
         <div className={styles.section}>
