@@ -17,7 +17,8 @@ type Props = {
 
 const fmt = (s: number) => {
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60)
-  return h > 0 ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}m`
+  if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m`
+  return m > 0 ? `${m}m` : `${Math.max(0, Math.round(s))}s`
 }
 
 export default function RankingPanel({ userId, roomId, lang = 'ja', refreshKey = 0 }: Props) {
@@ -60,7 +61,7 @@ export default function RankingPanel({ userId, roomId, lang = 'ja', refreshKey =
       <div className={styles.seg}>
         {(['global', 'friends', 'room'] as const).map(s => (
           <button key={s} className={scope === s ? styles.segOn : ''} onClick={() => setScope(s)}>
-            {ja ? { global: '🌏 全体', friends: '👥 フレンド', room: '🏠 ルーム' }[s] : { global: '🌏 Global', friends: '👥 Friends', room: '🏠 Room' }[s]}
+            {ja ? { global: '全体', friends: 'フレンド', room: 'ルーム' }[s] : { global: 'Global', friends: 'Friends', room: 'Room' }[s]}
           </button>
         ))}
       </div>
@@ -79,7 +80,7 @@ export default function RankingPanel({ userId, roomId, lang = 'ja', refreshKey =
         const above = rows.filter(r => r.rank < me.rank!).pop()
         const diff = above ? above.total_seconds - me.total_seconds : 0
         return above && diff > 0 ? (
-          <div className={styles.hint}>{ja ? `あと ${fmt(diff)} で ${above.display_name} さんを抜けます 🔥` : `${fmt(diff)} more to pass ${above.display_name} 🔥`}</div>
+          <div className={styles.hint}>{ja ? `あと ${fmt(diff)} で ${above.display_name} さんを抜けます` : `${fmt(diff)} more to pass ${above.display_name}`}</div>
         ) : null
       })()}
 
@@ -92,12 +93,12 @@ export default function RankingPanel({ userId, roomId, lang = 'ja', refreshKey =
       <div className={styles.list}>
         {rows.map(r => (
           <div key={r.user_id} className={`${styles.row} ${r.user_id === userId ? styles.rowMe : ''} ${r.rank <= 3 ? styles.rowTop : ''}`}>
-            <span className={styles.rank}>{['🥇', '🥈', '🥉'][r.rank - 1] ?? r.rank}</span>
+            <span className={`${styles.rank} ${r.rank <= 3 ? styles[`rank${r.rank}`] : ''}`}>{r.rank}</span>
             <span className={styles.avatar}>
               {r.avatar_url ? <img src={r.avatar_url} alt="" /> : r.display_name?.[0]}
             </span>
             <span className={styles.nameCol}>
-              <span className={styles.name}>{r.display_name}{r.study_streak > 1 && <span className={styles.streak}> 🔥{r.study_streak}</span>}</span>
+              <span className={styles.name}>{r.display_name}{r.study_streak > 1 && <span className={styles.streak}>{ja ? `${r.study_streak}日連続` : `${r.study_streak}d`}</span>}</span>
               <span className={styles.bar}><span style={{ width: `${Math.max(4, (r.total_seconds / top) * 100)}%` }} /></span>
             </span>
             <span className={styles.time}>{fmt(r.total_seconds)}</span>

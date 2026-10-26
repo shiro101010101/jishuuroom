@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#04060b">
+<title>オフライン | 自習室 JP</title>
+<style>
+  :root { color-scheme: dark; --bg: #04060b; --text: #eef1f6; --muted: #a4adbd; --card: rgba(20,24,36,.5); --line: rgba(255,255,255,.1); }
+  @media (prefers-color-scheme: light) { :root { color-scheme: light; --bg: #eef1f7; --text: #161b2a; --muted: #4f5970; --card: rgba(255,255,255,.6); --line: rgba(255,255,255,.85); } }
+  * { margin: 0; box-sizing: border-box; }
+  body { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; background: var(--bg); color: var(--text);
+    font-family: -apple-system, 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+    background-image: radial-gradient(60% 50% at 20% 10%, rgba(110,130,255,.3), transparent 70%), radial-gradient(50% 50% at 85% 90%, rgba(80,200,180,.2), transparent 70%); }
+  .card { max-width: 340px; width: 100%; padding: 32px 28px; border-radius: 24px; text-align: center; background: var(--card); border: 1px solid var(--line); backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px); }
+  .mark { width: 52px; height: 52px; margin: 0 auto 18px; border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 22px; border: 1px solid var(--line); }
+  h1 { font-size: 17px; font-weight: 500; margin-bottom: 10px; }
+  p { font-size: 13px; line-height: 1.8; color: var(--muted); margin-bottom: 22px; }
+  button { padding: 11px 26px; border-radius: 12px; border: 0; background: #6d85fa; color: #fff; font-size: 14px; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="mark">自</div>
+    <h1>インターネットにつながっていません</h1>
+    <p>接続が戻ったら、もう一度開いてください。</p>
+    <button onclick="location.reload()">再読み込み</button>
+  </div>
+</body>
+</html>

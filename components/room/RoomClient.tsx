@@ -14,6 +14,10 @@ import SafetyPanel from './SafetyPanel'
 import { translations, type Lang } from '@/lib/i18n'
 import TimelineCalendar from './TimelineCalendar'
 import RankingPanel from './RankingPanel'
+import ThemeToggle from '@/components/ThemeToggle'
+import AmbiencePanel from './AmbiencePanel'
+import { useAmbience } from '@/hooks/useAmbience'
+import { Icon, PlayIcon, PauseIcon, type IconName } from './Icons'
 import { usePresence } from '@/hooks/usePresence'
 import { useStudyTracker } from '@/hooks/useStudyTracker'
 import type { MyStats } from '@/lib/studyTime'
@@ -54,17 +58,17 @@ const WORD_FILTERS = [
 ]
 const SEAT_COLORS = ['#6c8aff','#a78bfa','#34d399','#f59e0b','#f87171','#fbbf24','#60a5fa','#fb7185','#4ade80','#facc15']
 type PanelId = 'timer' | 'tasks' | 'music' | 'stats' | 'ranking' | 'friends' | 'schedule' | 'rooms' | 'activity' | 'safety'
-const DOCK_PANELS: { id: PanelId; icon: string; ja: string; en: string }[] = [
-  { id: 'timer',    icon: '⏱', ja: 'タイマー', en: 'Timer' },
-  { id: 'tasks',    icon: '✅', ja: 'タスク',   en: 'Tasks' },
-  { id: 'music',    icon: '🎵', ja: 'BGM',      en: 'Music' },
-  { id: 'stats',    icon: '📊', ja: '統計',     en: 'Stats' },
-  { id: 'ranking',  icon: '🏆', ja: 'ランキング', en: 'Ranking' },
-  { id: 'friends',  icon: '👥', ja: 'フレンド', en: 'Friends' },
-  { id: 'schedule', icon: '📅', ja: '予定',     en: 'Schedule' },
-  { id: 'rooms',    icon: '🏠', ja: 'ルーム',   en: 'Rooms' },
-  { id: 'activity', icon: '🔔', ja: '通知',     en: 'Activity' },
-  { id: 'safety',   icon: '🛡️', ja: '安全設定', en: 'Safety' },
+const DOCK_PANELS: { id: PanelId; icon: IconName; ja: string; en: string }[] = [
+  { id: 'timer',    icon: 'timer', ja: 'タイマー', en: 'Timer' },
+  { id: 'tasks',    icon: 'tasks', ja: 'タスク',   en: 'Tasks' },
+  { id: 'music',    icon: 'music', ja: 'サウンド', en: 'Sound' },
+  { id: 'stats',    icon: 'stats', ja: '統計',     en: 'Stats' },
+  { id: 'ranking',  icon: 'trophy', ja: 'ランキング', en: 'Ranking' },
+  { id: 'friends',  icon: 'users', ja: 'フレンド', en: 'Friends' },
+  { id: 'schedule', icon: 'calendar', ja: '予定',     en: 'Schedule' },
+  { id: 'rooms',    icon: 'rooms', ja: 'ルーム',   en: 'Rooms' },
+  { id: 'activity', icon: 'bell', ja: '通知',     en: 'Activity' },
+  { id: 'safety',   icon: 'shield', ja: '安全設定', en: 'Safety' },
 ]
 
 export default function RoomClient({ profile, room, allRooms, initialMembers, initialFriends, initialTasks, initialStats }: Props) {
@@ -78,7 +82,6 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
     markPomodoro()
   })
   const [cameraOn, setCameraOn] = useState(false)
-  const { localStream, remoteStreams } = useWebRTC(room.id, profile.id, cameraOn)
 
   // ── Face detection ──
   const faceVideoRef = useRef<HTMLVideoElement | null>(null)
@@ -166,6 +169,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
   const [activeMobScreen, setActiveMobScreen] = useState<'timer' | 'room' | 'friends' | 'stats'>('timer')
   const [notifications, setNotifications] = useState([{ icon: '🏠', text: `「${room.name}」に入室しました`, time: 'たった今' }])
   const [bgmPlaying, setBgmPlaying] = useState<string | null>(null)
+  const ambience = useAmbience()
   const [volume, setVolume] = useState(0.4)
   const [blockModal, setBlockModal] = useState<{ userId: string; name: string } | null>(null)
   const [reportModal, setReportModal] = useState<{ userId: string; name: string } | null>(null)
@@ -221,6 +225,8 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
   const displayMembers = presence.synced
     ? rawMembers.filter((m: any) => presence.roomUserIds.has(m.user_id))
     : rawMembers
+  const { localStream, remoteStreams } = useWebRTC(room.id, profile.id, cameraOn,
+    displayMembers.map((m: any) => m.user_id).filter((id: string) => id !== profile.id))
   useEffect(() => { updateStatus(timer.mode === 'short' || timer.mode === 'long' ? 'break' : 'studying', currentTask, cameraOn) }, [cameraOn, timer.mode, currentTask])
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [chatMessages])
   useEffect(() => {
@@ -585,7 +591,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
   function openChat(friendId: string) { setPanel('friends'); setChatFriendId(friendId) }
   async function leaveRoom() {
     await fetch('/api/room/leave', { method: 'POST', body: JSON.stringify({ roomId: room.id }) }).catch(() => {})
-    router.push('/')
+    router.push('/lobby')
   }
 
   function addNotif(icon: string, text: string) { setNotifications(prev => [{ icon, text, time: 'たった今' }, ...prev].slice(0, 10)) }
@@ -626,7 +632,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
   const gridCols = tileCount <= 1 ? 1 : tileCount <= 4 ? 2 : tileCount <= 9 ? 3 : 4
   const studyingCount = displayMembers.filter((m: any) => m.status === 'studying').length
   const myStatus: 'studying' | 'break' | 'away' = awayModal ? 'away' : timer.mode === 'short' || timer.mode === 'long' ? 'break' : 'studying'
-  const statusLabel = (st: string) => st === 'studying' ? (lang==='ja'?'● 集中中':'● Focusing') : st === 'break' ? (lang==='ja'?'☕ 休憩中':'☕ Break') : (lang==='ja'?'😴 離席':'😴 Away')
+  const statusLabel = (st: string) => st === 'studying' ? (lang==='ja'?'集中中':'Focusing') : st === 'break' ? (lang==='ja'?'休憩中':'Break') : (lang==='ja'?'離席中':'Away')
   const timerModeLabel = timer.mode==='focus'?'集中モード':timer.mode==='short'?'小休憩':timer.mode==='long'?'長休憩':'カスタム'
 
   return (
@@ -842,7 +848,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
       {/* HEADER */}
       <header className={styles.header}>
         <div className={styles.logo}>
-          <div className={styles.logoIcon}>📚</div>
+          <div className={styles.logoIcon}>自</div>
           <span>{lang==='ja'?'自習室 JP':'Study With Me JP'}</span>
         </div>
         <div className={styles.headerCenter}>
@@ -850,6 +856,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
         </div>
         <div className={styles.headerRight}>
           <div className={styles.clock}>{currentTime}</div>
+          <ThemeToggle />
           <button onClick={toggleLang}
             style={{ padding:'4px 10px', background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:6, color:'var(--muted2)', fontSize:11, cursor:'pointer', fontFamily:'inherit', fontWeight:600 }}>
             {lang === 'ja' ? '🇬🇧 EN' : '🇯🇵 JP'}
@@ -866,14 +873,14 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
       <div className={styles.desktopLayout}>
 
         {/* STAGE */}
-        <main className={styles.ssStage}>
+        <main className={`${styles.ssStage} ${panel || chatFriendId ? styles.ssStageShift : ''}`}>
 
           {/* Top row: room info / timer pill / current task */}
           <div className={styles.ssTopRow}>
             <button className={styles.ssRoomInfo} onClick={() => togglePanel('rooms')} title={lang==='ja'?'ルームを切り替え':'Switch room'}>
               <span className={styles.ssRoomEmoji}>{room.emoji ?? '📚'}</span>
               <div style={{ minWidth:0 }}>
-                <div className={styles.ssRoomName}>{room.name} ▾</div>
+                <div className={styles.ssRoomName}>{room.name} <Icon name="chevron" size={12}/></div>
                 <div className={styles.ssRoomMeta}>
                   <span className={styles.liveDot}/> {studyingCount}{lang==='ja'?'人が集中中':' focusing'} · {displayMembers.length}{lang==='ja'?'人が入室':' in room'}
                 </div>
@@ -886,7 +893,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                 <span className={styles.ssTimerDigits}>{fmtTime(timer.seconds)}</span>
               </button>
               <button className={styles.ssTimerPlay} onClick={timer.toggle} aria-label={timer.running?'pause':'start'}>
-                {timer.running ? '❚❚' : '▶'}
+                {timer.running ? <PauseIcon/> : <PlayIcon/>}
               </button>
               <div className={styles.ssTimerBar} style={{ width:`${timer.progress*100}%` }}/>
             </div>
@@ -909,19 +916,19 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                       <div className={styles.ssAvatar} style={{ background:'rgba(108,138,255,.2)', color:'var(--accent)' }}>
                         {profile.avatar_url ? <img src={profile.avatar_url} alt=""/> : profile.display_name[0]}
                       </div>
-                      <button className={styles.ssCamCta} onClick={() => setCameraOn(true)}>📷 {lang==='ja'?'カメラをONにする':'Turn camera on'}</button>
+                      <button className={styles.ssCamCta} onClick={() => setCameraOn(true)}><Icon name="camera" size={13}/> {lang==='ja'?'カメラをONにする':'Turn camera on'}</button>
                     </div>}
                 <div className={styles.ssTileTop}>
                   <span className={`${styles.ssStatus} ${myStatus==='studying'?styles.ssStatusStudy:myStatus==='break'?styles.ssStatusBreak:styles.ssStatusAway}`}>
                     {statusLabel(myStatus)}
                   </span>
-                  {streak > 0 && <span className={styles.ssChip}>🔥{streak}</span>}
+                  {streak > 0 && <span className={styles.ssChip}>{lang==='ja'?`${streak}日連続`:`${streak}-day streak`}</span>}
                 </div>
                 <div className={styles.ssTileBottom}>
                   <span className={styles.ssName}>{profile.display_name} <span style={{ opacity:.6 }}>{lang==='ja'?'(あなた)':'(you)'}</span></span>
                   {mySubject && <span className={styles.ssChip}>{mySubject}</span>}
                 </div>
-                {(() => { const dm = dailyMessages.find((d: any) => d.user_id === profile.id); return dm ? <div className={styles.ssBubble}>💬 {dm.content}</div> : null })()}
+                {(() => { const dm = dailyMessages.find((d: any) => d.user_id === profile.id); return dm ? <div className={styles.ssBubble}>{dm.content}</div> : null })()}
               </div>
 
               {/* Other members */}
@@ -948,16 +955,16 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                       <span className={`${styles.ssStatus} ${m.status==='studying'?styles.ssStatusStudy:m.status==='break'?styles.ssStatusBreak:styles.ssStatusAway}`}>
                         {statusLabel(m.status)}
                       </span>
-                      {isPinnedUser && <span className={styles.ssChip}>📌</span>}
+                      {isPinnedUser && <span className={styles.ssChip}><Icon name="pin" size={10}/></span>}
                       {rxs.length > 0 && <span className={styles.ssChip}>{rxs.slice(-3).map(r => r.emoji).join('')}</span>}
                     </div>
                     <div className={styles.ssTileActions}>
-                      <button title={lang==='ja'?'リアクション':'React'} onClick={() => setReactionTarget({ userId:m.user_id, name:mp.display_name })}>😊</button>
-                      <button title={isPinnedUser?(lang==='ja'?'ピン解除':'Unpin'):(lang==='ja'?'ピン留め':'Pin')} onClick={() => togglePin(m.user_id)} style={{ opacity:isPinnedUser?1:.6 }}>📌</button>
+                      <button title={lang==='ja'?'リアクション':'React'} onClick={() => setReactionTarget({ userId:m.user_id, name:mp.display_name })}><Icon name="smile" size={14}/></button>
+                      <button title={isPinnedUser?(lang==='ja'?'ピン解除':'Unpin'):(lang==='ja'?'ピン留め':'Pin')} onClick={() => togglePin(m.user_id)} style={{ opacity:isPinnedUser?1:.6 }}><Icon name="pin" size={14}/></button>
                       {isFriend ? (
-                        <button title={lang==='ja'?'チャット':'Chat'} onClick={() => openChat(m.user_id)}>💬</button>
+                        <button title={lang==='ja'?'チャット':'Chat'} onClick={() => openChat(m.user_id)}><Icon name="message" size={14}/></button>
                       ) : isPending ? (
-                        <button title={lang==='ja'?'申請中':'Pending'} disabled>⏳</button>
+                        <button title={lang==='ja'?'申請中':'Pending'} disabled><Icon name="clock" size={14}/></button>
                       ) : (
                         <button title={lang==='ja'?'フレンド申請':'Add Friend'} onClick={async () => {
                           const result = await sendFriendRequest(m.user_id)
@@ -967,15 +974,15 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                           } else {
                             showToast(lang==='ja'?'既に申請済みです':'Already requested')
                           }
-                        }}>➕</button>
+                        }}><Icon name="userPlus" size={14}/></button>
                       )}
-                      <button title={lang==='ja'?'報告':'Report'} onClick={() => setReportModal({ userId:m.user_id, name:mp.display_name })}>⚠️</button>
+                      <button title={lang==='ja'?'報告':'Report'} onClick={() => setReportModal({ userId:m.user_id, name:mp.display_name })}><Icon name="flag" size={14}/></button>
                     </div>
                     <div className={styles.ssTileBottom}>
                       <span className={styles.ssName}>{mp.display_name}</span>
                       {memberSubject && <span className={styles.ssChip} style={{ color }}>{memberSubject}</span>}
                     </div>
-                    {dm && <div className={styles.ssBubble}>💬 {dm.content}</div>}
+                    {dm && <div className={styles.ssBubble}>{dm.content}</div>}
                   </div>
                 )
               })}
@@ -984,9 +991,9 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
               {!showPinnedFilter && filteredMembers.length < 3 && (
                 <div className={`${styles.ssTile} ${styles.ssTileEmpty}`}>
                   <div className={styles.ssTileOff}>
-                    <div style={{ fontSize:28, opacity:.5 }}>🪑</div>
+                    <div style={{ color:'var(--muted)' }}><Icon name="seat" size={26} strokeWidth={1.3}/></div>
                     <div style={{ fontSize:12, color:'var(--muted)' }}>{lang==='ja'?'もうすぐ誰かが来るかも…':'Someone may join soon…'}</div>
-                    <button className={styles.ssCamCta} onClick={() => togglePanel('rooms')}>🏠 {lang==='ja'?'他のルームを見る':'Browse rooms'}</button>
+                    <button className={styles.ssCamCta} onClick={() => togglePanel('rooms')}>{lang==='ja'?'他のルームを見る':'Browse rooms'}</button>
                   </div>
                 </div>
               )}
@@ -996,11 +1003,11 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
           {/* DOCK */}
           <div className={styles.ssDock}>
             <button className={`${styles.ssDockBtn} ${cameraOn?styles.ssDockOn:styles.ssDockOff}`} onClick={() => setCameraOn(v => !v)} title={cameraOn?T.cameraOn:T.cameraOff}>
-              <span className={styles.ssDockIcon}>📷</span>
+              <span className={styles.ssDockIcon}><Icon name={cameraOn?'camera':'cameraOff'}/></span>
               <span className={styles.ssDockLbl}>{cameraOn?(lang==='ja'?'カメラON':'Cam on'):(lang==='ja'?'カメラOFF':'Cam off')}</span>
             </button>
             <div className={`${styles.ssDockBtn} ${styles.ssDockOff}`} title={T.noTalk} style={{ cursor:'default' }}>
-              <span className={styles.ssDockIcon}>🔇</span>
+              <span className={styles.ssDockIcon}><Icon name="micOff"/></span>
               <span className={styles.ssDockLbl}>{lang==='ja'?'マイク禁止':'No mic'}</span>
             </div>
             <div className={styles.ssDockSep}/>
@@ -1008,22 +1015,22 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
               const badge = p.id === 'friends' ? pendingIn.length + Object.values(unreadCounts).reduce((a, b) => a + b, 0) : 0
               return (
                 <button key={p.id} className={`${styles.ssDockBtn} ${panel===p.id?styles.ssDockActive:''}`} onClick={() => togglePanel(p.id)}>
-                  <span className={styles.ssDockIcon}>{p.icon}{badge > 0 && <span className={styles.ssDockBadge}>{badge}</span>}</span>
+                  <span className={styles.ssDockIcon}><Icon name={p.icon}/>{badge > 0 && <span className={styles.ssDockBadge}>{badge}</span>}</span>
                   <span className={styles.ssDockLbl}>{lang==='ja'?p.ja:p.en}</span>
                 </button>
               )
             })}
             <div className={styles.ssDockSep}/>
             <button className={`${styles.ssDockBtn} ${showPinnedFilter?styles.ssDockActive:''}`} onClick={() => setShowPinnedFilter(v => !v)} title={T.pinnedOnly}>
-              <span className={styles.ssDockIcon}>📌</span>
+              <span className={styles.ssDockIcon}><Icon name="pin"/></span>
               <span className={styles.ssDockLbl}>{lang==='ja'?'ピン':'Pinned'}</span>
             </button>
             <button className={styles.ssDockBtn} onClick={() => setZen(true)} title={lang==='ja'?'集中モード (Esc で戻る)':'Focus mode (Esc to exit)'}>
-              <span className={styles.ssDockIcon}>🧘</span>
+              <span className={styles.ssDockIcon}><Icon name="focus"/></span>
               <span className={styles.ssDockLbl}>{lang==='ja'?'集中':'Focus'}</span>
             </button>
             <button className={`${styles.ssDockBtn} ${styles.ssDockLeave}`} onClick={leaveRoom}>
-              <span className={styles.ssDockIcon}>🚪</span>
+              <span className={styles.ssDockIcon}><Icon name="leave"/></span>
               <span className={styles.ssDockLbl}>{T.leaveRoom}</span>
             </button>
           </div>
@@ -1035,8 +1042,8 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
               <div className={styles.ssZenDigits}>{fmtTime(timer.seconds)}</div>
               <div className={styles.ssZenTask}>{currentTask}</div>
               <div className={styles.ssZenBtns} onClick={e => e.stopPropagation()}>
-                <button className={styles.btnStart} onClick={timer.toggle}>{timer.running?T.pause:T.start}</button>
-                <button className={styles.btnReset} onClick={() => setZen(false)}>✕ {lang==='ja'?'戻る':'Exit'}</button>
+                <button className={styles.btnStart} onClick={timer.toggle}>{timer.running?(lang==='ja'?'一時停止':'Pause'):(lang==='ja'?'スタート':'Start')}</button>
+                <button className={styles.btnReset} onClick={() => setZen(false)}>{lang==='ja'?'戻る':'Exit'}</button>
               </div>
               <div className={styles.ssZenHint}>{studyingCount}{lang==='ja'?'人があなたと一緒に集中しています':' people are focusing with you'}</div>
             </div>
@@ -1076,8 +1083,8 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
           ) : panel && (
             <>
               <div className={styles.ssDrawerHead}>
-                <span>{DOCK_PANELS.find(p => p.id === panel)?.icon} {lang==='ja'?DOCK_PANELS.find(p => p.id === panel)?.ja:DOCK_PANELS.find(p => p.id === panel)?.en}</span>
-                <button className={styles.chatClose} onClick={() => setPanel(null)}>✕</button>
+                <span className={styles.ssDrawerTitle}><Icon name={DOCK_PANELS.find(p => p.id === panel)!.icon} size={16}/> {lang==='ja'?DOCK_PANELS.find(p => p.id === panel)?.ja:DOCK_PANELS.find(p => p.id === panel)?.en}</span>
+                <button className={styles.ssIconBtn} onClick={() => setPanel(null)} aria-label="close"><Icon name="x" size={16}/></button>
               </div>
               <div className={styles.srPanel}>
 
@@ -1115,7 +1122,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                         </div>
                       </div>
                       <div className={styles.timerCtrl}>
-                        <button className={styles.btnStart} onClick={timer.toggle}>{timer.running?T.pause:T.start}</button>
+                        <button className={styles.btnStart} onClick={timer.toggle}>{timer.running?(lang==='ja'?'一時停止':'Pause'):(lang==='ja'?'スタート':'Start')}</button>
                         <button className={styles.btnReset} onClick={timer.reset}>↺</button>
                       </div>
                       <div className={styles.pomoDots}>
@@ -1124,7 +1131,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                       <div style={{ textAlign:'center', fontSize:11, color:'var(--muted)', marginTop:8 }}>{lang==='ja'?'セッション':'Session'} {timer.sessionCount} / 4</div>
                     </div>
                     <div>
-                      <div className={styles.secLabel}>{lang==='ja'?'🎯 勉強科目':'🎯 Subject'}</div>
+                      <div className={styles.secLabel}>{lang==='ja'?'勉強科目':'Subject'}</div>
                       <button onClick={() => setShowSubjectPicker(true)} style={{ width:'100%', padding:'8px 12px', background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:8, color:mySubject?'var(--accent)':'var(--muted)', fontSize:12, cursor:'pointer', fontFamily:'inherit', textAlign:'left', transition:'.2s' }}>
                         {mySubject || '科目を選択...'} ▾
                       </button>
@@ -1135,7 +1142,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                 {panel==='tasks' && (
                   <>
                     <div>
-                      <div className={styles.secLabel}>{lang==='ja'?'💬 今日の一言':'💬 Status message'}</div>
+                      <div className={styles.secLabel}>{lang==='ja'?'今日の一言':'Status message'}</div>
                       <div style={{ display:'flex', gap:6 }}>
                         <input placeholder={lang==='ja'?'今日の一言を投稿...':'Share what you are working on...'}
                           value={dailyMsgInput} onChange={e => setDailyMsgInput(e.target.value)}
@@ -1145,7 +1152,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                       </div>
                     </div>
                     <div>
-                      <div className={styles.secLabel}>{lang==='ja'?'✅ タスク':'✅ Tasks'}</div>
+                      <div className={styles.secLabel}>{lang==='ja'?'タスク':'Tasks'}</div>
                       <TaskPanel userId={profile.id} roomId={room.id} tasks={tasks}
                         onAddTask={addTask} onCompleteTask={completeTask} onDeleteTask={deleteTask}
                         onUpdateShare={updateTaskShareLocal}
@@ -1215,6 +1222,8 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
 
                 {panel==='music' && (
                   <>
+                    <AmbiencePanel ambience={ambience} lang={lang}/>
+                    <div className={styles.secLabel} style={{ marginBottom:-8 }}>BGM</div>
                     <div className={styles.bgmList}>
                       {BGM_TRACKS.map((t: any) => (
                         <div key={t.id} className={`${styles.bgmItem} ${bgmPlaying===t.id?styles.bgmPlaying:''}`} onClick={() => toggleBgm(t.id)}>
@@ -1433,7 +1442,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
           activeScreen={activeMobScreen} profile={profile} room={room} allRooms={allRooms}
           timer={timer} members={displayMembers} friends={displayFriends} pendingIn={pendingIn}
           unreadCounts={unreadCounts} tasks={tasks} localStream={localStream} remoteStreams={remoteStreams}
-          cameraOn={cameraOn} bgmPlaying={bgmPlaying} volume={volume} bgmGainRef={bgmGainRef}
+          cameraOn={cameraOn} bgmPlaying={bgmPlaying} volume={volume} bgmGainRef={bgmGainRef} ambience={ambience}
           notifications={notifications} weeklyStats={weeklyStats} currentTask={currentTask}
           onToggleCamera={() => setCameraOn(v => !v)}
           onAddTask={addTask} onCompleteTask={completeTask} onDeleteTask={deleteTask}
@@ -1443,7 +1452,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
           onAcceptFriend={acceptFriendRequest}
           onToggleBgm={toggleBgm} onSetVolume={setVolume}
           onJoinRoom={(rid) => router.push(`/room/${rid}`)}
-          onLeaveRoom={() => router.push('/')}
+          onLeaveRoom={leaveRoom}
           todaySeconds={todaySeconds} pomosToday={pomosToday} tasksDoneToday={tasksDoneToday}
           lang={lang}
           onUpdateShare={updateTaskShareLocal}
@@ -1499,8 +1508,8 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
           return (
             <button key={screen} className={`${styles.bnavBtn} ${activeMobScreen===screen?styles.bnavBtnActive:''}`} onClick={() => setActiveMobScreen(screen)}>
               <div className={styles.bnavIcon} style={{ position:'relative' }}>
-                {['⏱','🎥','👥','📊'][i]}
-                {hasNotif && <span style={{ position:'absolute', top:-2, right:-2, width:8, height:8, borderRadius:'50%', background:'var(--accent)', border:'2px solid var(--bg2)' }}/>}
+                <Icon name={(['timer','camera','users','stats'] as const)[i]} size={19}/>
+                {hasNotif && <span style={{ position:'absolute', top:-2, right:-2, width:8, height:8, borderRadius:'50%', background:'var(--accent)', boxShadow:'0 0 0 2px var(--bg)' }}/>}
               </div>
               <span className={styles.bnavLbl}>{lang==='ja'?['タイマー','ルーム','フレンド','統計'][i]:['Timer','Room','Friends','Stats'][i]}</span>
             </button>

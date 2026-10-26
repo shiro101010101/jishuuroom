@@ -1,0 +1,16 @@
+/* components/room/AmbiencePanel.module.css */
+.wrap { display: flex; flex-direction: column; gap: 8px; }
+.head { display: flex; align-items: baseline; justify-content: space-between; font-size: 10px; font-weight: 500; letter-spacing: .16em; color: var(--muted); margin-bottom: 2px; }
+.hint { letter-spacing: .06em; font-weight: 400; }
+.row { display: flex; align-items: center; gap: 12px; padding: 10px 14px 10px 10px; border-radius: 14px; background: rgba(var(--fg),.03); border: 1px solid rgba(var(--fg),.06); transition: background .3s, border-color .3s; }
+.on { background: rgba(241,195,143,.07); border-color: rgba(241,195,143,.22); }
+.toggle { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 2px; background: none; border: none; color: var(--muted2); font-size: 12.5px; text-align: left; transition: color .3s; }
+.toggle svg { flex-shrink: 0; opacity: .7; }
+.on .toggle { color: var(--text); }
+.on .toggle svg { color: var(--lamp-color); opacity: 1; }
+.toggle span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.slider { width: 92px; -webkit-appearance: none; appearance: none; height: 3px; border-radius: 2px; outline: none; opacity: .45; transition: opacity .3s;
+  background: linear-gradient(90deg, var(--lamp-color) var(--v), rgba(var(--fg),.12) var(--v)); }
+.on .slider { opacity: 1; }
+.slider::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%; background: var(--text); box-shadow: 0 0 0 3px rgba(var(--fg),.08); cursor: pointer; }
+.slider::-moz-range-thumb { width: 12px; height: 12px; border: none; border-radius: 50%; background: var(--text); cursor: pointer; }

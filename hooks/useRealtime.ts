@@ -93,9 +93,12 @@ export function useMessages(userId: string, friendId: string) {
         `and(sender_id.eq.${userId},receiver_id.eq.${friendId}),` +
         `and(sender_id.eq.${friendId},receiver_id.eq.${userId})`
       )
-      .order('created_at', { ascending: true })
+      .order('created_at', { ascending: false })
       .limit(50)
-    if (data) setMessages(data)
+    if (data) setMessages([...data].reverse())
+    // チャットを開いた時点で、この相手からの未読をすべて既読にする
+    await (supabase as any).from('messages').update({ is_read: true })
+      .eq('sender_id', friendId).eq('receiver_id', userId).eq('is_read', false)
   }, [userId, friendId])
 
   useEffect(() => {
@@ -109,8 +112,9 @@ export function useMessages(userId: string, friendId: string) {
       }, (payload) => {
         const msg = payload.new as Message
         if (msg.sender_id === friendId) {
-          setMessages(prev => [...prev, msg])
-          ;(supabase as any).from('messages').update({ is_read: true }).eq('id', msg.id)
+          setMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg])
+          // チャットを開いている間に届いたものは即既読（クエリは await しないと送信されない）
+          ;(supabase as any).from('messages').update({ is_read: true }).eq('id', msg.id).then(() => {})
         }
       })
       .subscribe()
@@ -192,9 +196,9 @@ export function useFriends(userId: string) {
         fetchFriends()
       })
       .on('postgres_changes', {
-        event: 'INSERT', schema: 'public', table: 'messages',
+        event: '*', schema: 'public', table: 'messages',
         filter: `receiver_id=eq.${userId}`,
-      }, () => fetchFriends())
+      }, () => fetchFriends())  // 受信・既読どちらでも未読数を更新
       .subscribe((status: any) => console.log('friends channel:', status))
     return () => { try { supabase.getChannels().find((c:any)=>c===ch)?.unsubscribe() } catch{} }
   }, [userId])

@@ -13,6 +13,6 @@ export default async function InvitePage({ params }: { params: Promise<{ code: s
 
   const room = data as { id: string } | null
 
-  if (!room?.id) redirect('/')
+  if (!room?.id) redirect('/lobby')
   redirect(`/room/${room.id}`)
 }

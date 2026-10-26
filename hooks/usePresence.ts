@@ -23,12 +23,13 @@ export function usePresence(userId: string, roomId: string, studying: boolean) {
       if (status === 'SUBSCRIBED') await ch.track({ user_id: userId, room_id: roomId, studying })
     })
     setChannel(ch)
-    return () => { ch.untrack(); supabase.removeChannel(ch) }
+    // removeChannel で退出すれば Presence からも自動で消える（参加前に untrack するとエラーになる）
+    return () => { supabase.removeChannel(ch) }
   }, [userId, roomId])
 
   // 状態が変わったら送り直す（チャンネルは張り直さない）
   useEffect(() => {
-    if (channel && synced) channel.track({ user_id: userId, room_id: roomId, studying })
+    if (channel && synced && channel.state === 'joined') channel.track({ user_id: userId, room_id: roomId, studying })
   }, [channel, synced, studying])
 
   return useMemo(() => {

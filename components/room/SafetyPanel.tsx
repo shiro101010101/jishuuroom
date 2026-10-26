@@ -46,29 +46,30 @@ export default function SafetyPanel({
 
   useEffect(() => {
     const load = async () => {
+      // 保護者設定は本人しか読めない safety_settings に保存（profiles は全員が読めるため）
       const { data } = await (supabase as any)
-        .from('profiles')
+        .from('safety_settings')
         .select('parent_email, notify_method, parent_pin')
-        .eq('id', userId)
-        .single()
-      if (data) {
-        setParentEmail(data.parent_email || '')
-        setNotifyMethod(data.notify_method || 'none')
-        setSavedPin(data.parent_pin || '')
-        // If no PIN set, auto-verify
-        if (!data.parent_pin) setPinVerified(true)
-      }
+        .eq('user_id', userId)
+        .maybeSingle()
+      setParentEmail(data?.parent_email || '')
+      setNotifyMethod(data?.notify_method || 'none')
+      setSavedPin(data?.parent_pin || '')
+      // If no PIN set, auto-verify
+      if (!data?.parent_pin) setPinVerified(true)
     }
     load()
   }, [userId])
 
   async function save() {
     setSaving(true)
-    await (supabase as any).from('profiles').update({
+    await (supabase as any).from('safety_settings').upsert({
+      user_id: userId,
       parent_email: parentEmail || null,
       notify_method: notifyMethod,
       parent_pin: newPin || savedPin || null,
-    }).eq('id', userId)
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'user_id' })
     if (newPin) setSavedPin(newPin)
     setSaving(false)
     setSaved(true)
@@ -229,7 +230,7 @@ export default function SafetyPanel({
             {/* PIN verification - show when PIN is set and not yet verified */}
             {savedPin && !pinVerified && (
               <div className={styles.pinBox}>
-                <div style={{ fontSize:12, color:'#f1f5f9', marginBottom:8 }}>
+                <div style={{ fontSize:12, color:'var(--text)', marginBottom:8 }}>
                   🔐 {ja ? '設定を変更するにはPINを入力してください' : 'Enter PIN to change settings'}
                 </div>
                 <div style={{ display:'flex', gap:6 }}>
@@ -313,10 +314,10 @@ export default function SafetyPanel({
 
                 {/* Sample notification message */}
                 <div className={styles.infoBox}>
-                  <div style={{ fontSize:11, fontWeight:600, color:'#f1f5f9', marginBottom:6 }}>
+                  <div style={{ fontSize:11, fontWeight:600, color:'var(--text)', marginBottom:6 }}>
                     📧 {ja ? '送信されるメッセージ例' : 'Sample notification message'}
                   </div>
-                  <div style={{ fontSize:10, color:'#9ca3af', lineHeight:1.7, background:'var(--bg)', borderRadius:6, padding:'8px 10px' }}>
+                  <div style={{ fontSize:10, color:'var(--muted2)', lineHeight:1.7, background:'var(--bg)', borderRadius:6, padding:'8px 10px' }}>
                     {ja ? (
                       <>
                         件名：【自習室JP】離席を検出しました<br/>
@@ -345,7 +346,7 @@ export default function SafetyPanel({
                       </>
                     )}
                   </div>
-                  <div style={{ fontSize:10, color:'#9ca3af', marginTop:6 }}>
+                  <div style={{ fontSize:10, color:'var(--muted2)', marginTop:6 }}>
                     📋 {ja ? '通知タイミング：顔未検出・別タブ3回以上・不適切ワード検出時' : 'Triggers: face absent, 3+ tab switches, inappropriate word detected'}
                   </div>
                 </div>

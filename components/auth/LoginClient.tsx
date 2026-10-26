@@ -2,6 +2,8 @@
 import { signIn } from 'next-auth/react'
 import { useState, useEffect } from 'react'
 import styles from './LoginClient.module.css'
+import ThemeToggle from '@/components/ThemeToggle'
+import { Icon } from '@/components/room/Icons'
 
 export default function LoginClient({ error }: { error?: string }) {
   const [loading, setLoading] = useState<'google' | 'line' | null>(null)
@@ -21,7 +23,7 @@ export default function LoginClient({ error }: { error?: string }) {
   async function loginWith(provider: 'google' | 'line') {
     setLoading(provider)
     // Find first available room
-    await signIn(provider, { callbackUrl: '/room/00000000-0000-0000-0000-000000000001' })
+    await signIn(provider, { callbackUrl: '/lobby' })
   }
 
   const t = {
@@ -42,26 +44,28 @@ export default function LoginClient({ error }: { error?: string }) {
 
   return (
     <div className={styles.wrap}>
-      {/* Language toggle */}
-      <button onClick={toggleLang} style={{
-        position: 'fixed', top: 16, right: 16, padding: '6px 14px',
-        background: 'rgba(108,138,255,.15)', border: '1px solid rgba(108,138,255,.3)',
-        borderRadius: 20, color: '#a5b4fc', fontSize: 12, cursor: 'pointer',
-        fontFamily: 'inherit', fontWeight: 600, zIndex: 10
-      }}>
-        {lang === 'ja' ? '🇬🇧 English' : '🇯🇵 日本語'}
-      </button>
+      {/* テーマ・言語切り替え */}
+      <div style={{ position: 'fixed', top: 'max(16px, env(safe-area-inset-top))', right: 16, display: 'flex', gap: 8, zIndex: 10 }}>
+        <ThemeToggle />
+        <button onClick={toggleLang} style={{
+          padding: '6px 14px', background: 'var(--glass)', border: '1px solid var(--glass-border)',
+          backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
+          borderRadius: 10, color: 'var(--muted2)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 500,
+        }}>
+          {lang === 'ja' ? 'English' : '日本語'}
+        </button>
+      </div>
 
       <div className={styles.card}>
         <div className={styles.logo}>
-          <div className={styles.logoIcon}>📚</div>
+          <div className={styles.logoIcon}>自</div>
           <h1 className={styles.logoText}>{t.title}</h1>
         </div>
         <p className={styles.tagline}>{t.tagline}</p>
         <div className={styles.features}>
           {t.features.map((f, i) => (
             <div key={i} className={styles.feature}>
-              <span>{f.split(' ')[0]}</span> {f.split(' ').slice(1).join(' ')}
+              <Icon name={(['timer','camera','message','tasks'] as const)[i]} size={15}/> {f.split(' ').slice(1).join(' ')}
             </div>
           ))}
         </div>

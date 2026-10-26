@@ -17,14 +17,12 @@ export default auth(async (request) => {
 
   // ログイン済みでトップページ → ルームへ
   if (isLoggedIn && nextUrl.pathname === '/') {
-    return NextResponse.redirect(
-      new URL('/room/00000000-0000-0000-0000-000000000001', request.url)
-    )
+    return NextResponse.redirect(new URL('/lobby', request.url))
   }
 
   return NextResponse.next()
 })
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|manifest.json|sw.js|offline.html|icons/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
 }

@@ -20,7 +20,10 @@ npm install
 3. 左メニュー **SQL Editor** を開く
 4. `supabase/schema.sql` の内容を全コピペして **Run** 実行
 5. 続けて `supabase/migration_task_sharing.sql` も同様に実行
-6. 続けて `supabase/migration_ranking.sql` も実行（勉強時間ランキング）
+6. 続けて以下を **この順番で** 実行
+   1. `supabase/migration_missing_objects.sql`（今日の一言・リアクション・ピン・予約など）
+   2. `supabase/migration_ranking.sql`（勉強時間ランキング）
+   3. `supabase/migration_security.sql`（RLS の強化。**必ず STEP 3 の JWT Secret を設定・デプロイしてから実行**）
 
 ---
 
@@ -31,6 +34,8 @@ npm install
    - **Project URL** → `https://xxxx.supabase.co`
    - **anon / public** → `eyJhbG...`
    - **service_role** → `eyJhbG...`（⚠️ 絶対に公開しない）
+3. **Settings → JWT Keys**（または Settings → API → JWT Settings）の **JWT Secret**（Legacy JWT secret）もメモ
+   - ブラウザから Supabase に「本人として」接続するために使います（⚠️ 絶対に公開しない）
 
 ---
 
@@ -72,6 +77,7 @@ cp .env.local.example .env.local
 NEXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co    ← STEP3のURL
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbG...              ← STEP3のanon key
 SUPABASE_SERVICE_ROLE_KEY=eyJhbG...                  ← STEP3のservice_role key
+SUPABASE_JWT_SECRET=xxxxxxxx...                      ← STEP3のJWT Secret
 
 NEXTAUTH_SECRET=ランダムな文字列                       ← 下記コマンドで生成
 NEXTAUTH_URL=http://localhost:3000
@@ -188,4 +194,17 @@ jishuuroom/
 └── supabase/
     ├── schema.sql               # メインDB（最初に実行）
     └── migration_task_sharing.sql # タスク共有追加
+```
+
+---
+
+## 🧪 ローカルで複数人テストする
+
+Docker が必要です。本番のデータには触れません。
+
+```bash
+npx supabase init && npx supabase start      # ローカルの Supabase を起動
+# 表示された API URL / anon key / service_role key / JWT secret を .env.local に設定し、
+# supabase/ の SQL を README の順番で流す（psql postgresql://postgres:postgres@127.0.0.1:54322/postgres）
+npm run dev
 ```

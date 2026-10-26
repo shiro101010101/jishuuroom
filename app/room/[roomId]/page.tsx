@@ -38,7 +38,7 @@ export default async function RoomPage({ params }: { params: Promise<{ roomId: s
     // Find first available room
     const { data: firstRoom } = await supabase.from('rooms').select('id').eq('is_private', false).order('name').limit(1).single()
     if (firstRoom) redirect('/room/' + (firstRoom as any).id)
-    else redirect('/')
+    else redirect('/lobby')
   }
 
   const { data: allRooms } = await supabase.from('rooms').select('*').eq('is_private', false).order('name')

@@ -21,7 +21,7 @@
 
 .ringWrap { display: flex; justify-content: center; position: relative; }
 .ringInner { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); text-align: center; }
-.bigDigits { font-family: 'Space Mono', monospace; font-size: 52px; font-weight: 700; letter-spacing: -2px; background: linear-gradient(135deg,#fff 30%,var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; line-height: 1; }
+.bigDigits { font-family: var(--font-num); font-variant-numeric: tabular-nums; font-size: 52px; font-weight: 700; letter-spacing: -2px; background: linear-gradient(135deg,#fff 30%,var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; line-height: 1; }
 .bigLbl { font-size: 12px; color: var(--muted); margin-top: 4px; }
 
 .pomoDots { display: flex; gap: 6px; justify-content: center; }
@@ -53,7 +53,7 @@
 .camVideo { width: 100%; height: 100%; object-fit: cover; display: block; position: absolute; inset: 0; }
 .camOff { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--bg3); }
 .camAv { width: 56px; height: 56px; border-radius: 50%; background: rgba(108,138,255,.15); color: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; overflow: hidden; }
-.camName { position: absolute; bottom: 0; left: 0; right: 0; padding: 4px 6px; background: linear-gradient(transparent,rgba(0,0,0,.8)); display: flex; align-items: center; justify-content: space-between; }
+.camName { position: absolute; bottom: 0; left: 0; right: 0; padding: 4px 6px; background: linear-gradient(transparent,rgba(var(--shadow),calc(.8 * var(--sk)))); display: flex; align-items: center; justify-content: space-between; }
 .camNameTxt { font-size: 10px; font-weight: 500; }
 .camBadge { font-size: 8px; padding: 1px 4px; border-radius: 3px; font-weight: 700; }
 .badgeStudying { background: rgba(52,211,153,.2); color: var(--accent3); }
@@ -96,7 +96,7 @@
 /* ── STATS ── */
 .statGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .statCard { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
-.statVal { font-family: 'Space Mono', monospace; font-size: 24px; font-weight: 700; color: var(--accent); line-height: 1; }
+.statVal { font-family: var(--font-num); font-variant-numeric: tabular-nums; font-size: 24px; font-weight: 700; color: var(--accent); line-height: 1; }
 .statSub { font-size: 11px; color: var(--muted); margin-top: 4px; }
 
 .weekChart { display: flex; align-items: flex-end; gap: 4px; height: 80px; background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 12px 8px; }
@@ -120,3 +120,44 @@
 .quoteAuthor { font-size: 11px; color: var(--muted); margin-top: 6px; font-style: normal; }
 
 .notifItem { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; background: var(--bg2); border-radius: 8px; }
+
+/* ── すりガラスの上品な見た目（PC版とそろえる・上の指定を上書き） ── */
+.scroll { padding: 16px 16px calc(96px + env(safe-area-inset-bottom)); gap: 18px; }
+.secLabel { font-size: 10px; font-weight: 500; letter-spacing: .16em; color: var(--muted); }
+
+.focusCard, .camBar, .roomItem, .friendCard, .statCard, .weekChart, .bgmItem, .quoteBox, .notifItem, .camCard {
+  background: var(--glass); border: 1px solid var(--glass-border); box-shadow: var(--glass-hi);
+  backdrop-filter: blur(28px) saturate(150%); -webkit-backdrop-filter: blur(28px) saturate(150%); border-radius: 18px; }
+.camCard { border-radius: 20px; }
+.camCardYou { border-color: rgba(125,149,255,.5); }
+.camOff { background: radial-gradient(circle at 50% 40%, rgba(var(--fg),.06) 0, transparent 70%); }
+.camAv, .friendAv { background: rgba(var(--fg),.07); color: var(--text); font-weight: 400; border: 1px solid rgba(var(--fg),.08); }
+.onlineDot { background: var(--ok); border-color: transparent; box-shadow: 0 0 6px rgba(var(--ok-rgb),.8); }
+
+.timerModes { padding: 3px; gap: 2px; background: rgba(var(--fg),.05); border: 1px solid rgba(var(--fg),.07); border-radius: 13px; }
+.modeBtn { border: none; border-radius: 10px; color: var(--muted2); padding: 9px 4px; }
+.modeBtnActive { background: rgba(var(--fg),.13); color: var(--text); box-shadow: inset 0 1px 0 rgba(var(--fg),.08); }
+.bigDigits { font-weight: 200; letter-spacing: .01em; background: none; -webkit-text-fill-color: var(--text); color: var(--text); }
+.bigLbl { letter-spacing: .14em; font-size: 11px; }
+.pdot { background: rgba(var(--fg),.12); }
+.pdotDone { background: var(--accent2); box-shadow: 0 0 6px rgba(169,188,255,.6); }
+.btnStart { border-radius: 16px; font-weight: 500; letter-spacing: .08em; background: rgba(125,149,255,.9); box-shadow: inset 0 1px 0 rgba(255,255,255,.25), 0 10px 28px rgba(125,149,255,.3); }
+.btnReset { border-radius: 16px; background: rgba(var(--fg),.06); border-color: rgba(var(--fg),.1); }
+
+.focusTask { font-weight: 400; }
+.sessionBadge, .inRoomBadge { background: rgba(125,149,255,.12); border-color: rgba(125,149,255,.25); border-radius: 999px; }
+.camToggle, .leaveBtn, .chatBtn, .blockBtn { border-radius: 12px; }
+.camToggle { background: rgba(var(--fg),.05); border-color: rgba(var(--fg),.1); }
+.camToggleOn { background: rgba(125,149,255,.14); border-color: rgba(125,149,255,.45); color: var(--accent); }
+.roomItemActive, .bgmPlaying { border-color: rgba(125,149,255,.45); background: rgba(125,149,255,.1); }
+.acceptBtn { border-radius: 10px; color: #fff; font-weight: 500; }
+
+.statVal { font-weight: 300; color: var(--text); font-size: 26px; }
+.wbar { background: linear-gradient(to top, rgba(125,149,255,.35), rgba(169,188,255,.85)); border-radius: 4px 4px 1px 1px; }
+.quoteBox { border-left: 1px solid var(--glass-border); font-style: normal; font-weight: 300; }
+.bgmPlay { background: rgba(var(--fg),.06); border-color: rgba(var(--fg),.1); }
+.bgmPlaying .bgmPlay { animation: none; background: rgba(125,149,255,.75); }
+.volSlider { background: rgba(var(--fg),.12); }
+/* 静かな夜に合わせて、ボタンは光らせすぎない */
+.btnStart { background: rgba(125,149,255,.2); border: 1px solid rgba(125,149,255,.38); color: var(--text); box-shadow: inset 0 1px 0 rgba(255,255,255,.1), 0 10px 30px rgba(125,149,255,.12); }
+.btnStart:hover { background: rgba(125,149,255,.3); }

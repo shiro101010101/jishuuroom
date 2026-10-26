@@ -1,5 +1,7 @@
 'use client'
 // components/room/MobileScreens.tsx
+import AmbiencePanel from './AmbiencePanel'
+import type { useAmbience } from '@/hooks/useAmbience'
 import { useRef, useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { signOut } from 'next-auth/react'
@@ -30,6 +32,7 @@ type Props = {
   bgmPlaying: string | null
   volume: number
   bgmGainRef: React.RefObject<GainNode | null>
+  ambience: ReturnType<typeof useAmbience>
   notifications: { icon: string; text: string; time: string }[]
   weeklyStats: { day_of_week: number; total_seconds: number }[]
   currentTask: string
@@ -82,7 +85,7 @@ const QUOTES = [
 export default function MobileScreens({
   activeScreen, profile, room, allRooms, timer, members, friends, pendingIn,
   unreadCounts, tasks, localStream, remoteStreams, cameraOn, bgmPlaying,
-  volume, bgmGainRef, notifications, weeklyStats, currentTask,
+  volume, bgmGainRef, ambience, notifications, weeklyStats, currentTask,
   onToggleCamera, onAddTask, onCompleteTask, onDeleteTask,
   onOpenChat, onBlock, onReport, onAcceptFriend,
   onToggleBgm, onSetVolume, onJoinRoom, onLeaveRoom,
@@ -498,6 +501,10 @@ export default function MobileScreens({
               )
             })}
           </div>
+        </div>
+
+        <div className={styles.section}>
+          <AmbiencePanel ambience={ambience} lang={lang}/>
         </div>
 
         <div className={styles.section}>
