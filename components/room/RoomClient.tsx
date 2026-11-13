@@ -1205,7 +1205,6 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                     </div>
                     <div className={styles.ssTileActions}>
                       <button title={lang==='ja'?'リアクション':'React'} onClick={() => setReactionTarget({ userId:m.user_id, name:mp.display_name })}><Icon name="smile" size={14}/></button>
-                      <button title={isPinnedUser?(lang==='ja'?'ピン解除':'Unpin'):(lang==='ja'?'ピン留め':'Pin')} onClick={() => onPinClick(m.user_id, mp.display_name)} style={{ opacity:isPinnedUser?1:.6 }}><Icon name="pin" size={14}/></button>
                       {isFriend ? (
                         <button title={lang==='ja'?'チャット':'Chat'} onClick={() => openChat(m.user_id)}><Icon name="message" size={14}/></button>
                       ) : isPending ? (
@@ -1220,6 +1219,21 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                     <div className={styles.ssTileBottom}>
                       <button className={styles.ssName} onClick={() => setViewUserId(m.user_id)} title={lang==='ja'?'プロフィールを見る':'View profile'}>{mp.display_name}</button>
                       {memberSubject && <span className={styles.ssChip} style={{ color }}>{memberSubject}</span>}
+                      {(() => {
+                        const matched = matchedIds.has(m.user_id)
+                        const secretPin = !!getMyPin(m.user_id)?.is_secret
+                        const label = matched ? (lang==='ja'?'🤝 ペア':'🤝 Pair')
+                          : isPinnedUser ? (secretPin ? (lang==='ja'?'🤫 ひみつ':'🤫 Secret') : (lang==='ja'?'📌 ピン中':'📌 Pinned'))
+                          : (lang==='ja'?'📌 ピン':'📌 Pin')
+                        const hint = matched ? (lang==='ja'?'お互いにピンしています（タップで解除）':'You pinned each other (tap to unpin)')
+                          : isPinnedUser ? (lang==='ja'?'ピンしています（タップで解除）':'Pinned (tap to unpin)')
+                          : (lang==='ja'?'気になる勉強仲間をピン。お互いにピンするとマッチします':'Pin a study buddy. Pin each other to match')
+                        return (
+                          <button type="button" title={hint} aria-pressed={isPinnedUser}
+                            className={`${styles.ssPinBtn} ${isPinnedUser?styles.ssPinBtnOn:''} ${matched?styles.ssPinBtnPair:''}`}
+                            onClick={() => onPinClick(m.user_id, mp.display_name)}>{label}</button>
+                        )
+                      })()}
                     </div>
                     {dm && <div className={styles.ssBubble}>{dm.content}</div>}
                   </div>
@@ -1265,7 +1279,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
             <div className={styles.ssDockSep}/>
             <button className={`${styles.ssDockBtn} ${showPinnedFilter?styles.ssDockActive:''}`} onClick={() => setShowPinnedFilter(v => !v)} title={T.pinnedOnly}>
               <span className={styles.ssDockIcon}><Icon name="pin"/></span>
-              <span className={styles.ssDockLbl}>{lang==='ja'?'ピン':'Pinned'}</span>
+              <span className={styles.ssDockLbl}>{lang==='ja'?'ピンした人':'Pinned'}</span>
             </button>
             <button className={styles.ssDockBtn} onClick={() => setZen(true)} title={lang==='ja'?'集中モード (Esc で戻る)':'Focus mode (Esc to exit)'}>
               <span className={styles.ssDockIcon}><Icon name="focus"/></span>
@@ -1711,7 +1725,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
       <div className={styles.mobContent}>
         <MobileScreens
           activeScreen={activeMobScreen} profile={profile} room={room} allRooms={allRooms}
-          timer={timer} members={visibleMembers} friends={displayFriends} pendingIn={pendingIn}
+          timer={timer} members={orderedMembers} friends={displayFriends} pendingIn={pendingIn}
           myPrivateRooms={myPrivateRooms}
           shareCard={<ShareCard lang={lang} displayName={profile.display_name} todaySeconds={todaySeconds} pomosToday={pomosToday} streak={streak} week={weeklyStats as any} onToast={showToast}/>}
           studyTogether={<><StudyTogether lang={lang} room={room} userId={profile.id} displayName={profile.display_name} myPrivateRooms={myPrivateRooms} onToast={showToast}/><BlockedList lang={lang} blocked={blocked} onUnblock={handleUnblock}/></>}
@@ -1728,6 +1742,8 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
           onBlock={(uid,name) => setBlockModal({ userId:uid, name })}
           onReport={(uid,name) => setReportModal({ userId:uid, name })}
           onViewProfile={setViewUserId}
+          pinState={(uid: string) => matchedIds.has(uid) ? 'pair' : isPinned(uid) ? (getMyPin(uid)?.is_secret ? 'secret' : 'pinned') : 'none'}
+          onPin={onPinClick}
           onAcceptFriend={(id: string) => acceptRequest(id, (pendingIn.find((r: any) => r.id === id) as any)?.profiles?.display_name ?? '')}
           onDeclineFriend={declineRequest}
           onToggleBgm={toggleBgm} onSetVolume={setVolume}

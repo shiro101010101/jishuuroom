@@ -44,6 +44,9 @@ type Props = {
   onBlock: (userId: string, name: string) => void
   onReport: (userId: string, name: string) => void
   onViewProfile?: (userId: string) => void
+  /** ピンの状態（none / pinned / secret / pair）とピンのボタン */
+  pinState?: (userId: string) => 'none' | 'pinned' | 'secret' | 'pair'
+  onPin?: (userId: string, name: string) => void
   onAcceptFriend: (friendshipId: string) => void
   onDeclineFriend?: (friendshipId: string) => void
   onToggleBgm: (id: string) => void
@@ -96,7 +99,7 @@ export default function MobileScreens({
   unreadCounts, tasks, localStream, remoteStreams, cameraOn, bgmPlaying,
   volume, bgmGainRef, ambience, notifications, weeklyStats, currentTask,
   onToggleCamera, onAddTask, onCompleteTask, onDeleteTask,
-  onOpenChat, onBlock, onReport, onViewProfile, onAcceptFriend, onDeclineFriend,
+  onOpenChat, onBlock, onReport, onViewProfile, pinState, onPin, onAcceptFriend, onDeclineFriend,
   onToggleBgm, onSetVolume, onJoinRoom, onLeaveRoom,
   todaySeconds, pomosToday, tasksDoneToday,
   lang, onUpdateShare,
@@ -280,6 +283,15 @@ export default function MobileScreens({
                             : mp.display_name[0]}
                         </div>
                       </div>}
+                  {onPin && (() => {
+                    const st = pinState?.(m.user_id) ?? 'none'
+                    const label = st === 'pair' ? '🤝 ペア' : st === 'secret' ? '🤫 ひみつ' : st === 'pinned' ? '📌 ピン中' : '📌 ピン'
+                    return (
+                      <button type="button" className={`${styles.pinMini} ${st !== 'none' ? styles.pinMiniOn : ''} ${st === 'pair' ? styles.pinMiniPair : ''}`}
+                        aria-pressed={st !== 'none'} aria-label={lang === 'ja' ? `${mp.display_name}をピン` : `Pin ${mp.display_name}`}
+                        onClick={e => { e.stopPropagation(); onPin(m.user_id, mp.display_name) }}>{lang === 'ja' ? label : label.replace('ピン中', 'Pinned').replace('ピン', 'Pin').replace('ペア', 'Pair').replace('ひみつ', 'Secret')}</button>
+                    )
+                  })()}
                   <div className={styles.camName}>
                     <span className={styles.camNameTxt}>{mp.display_name.slice(0, 6)}</span>
                     <button className={styles.reportMiniBtn} aria-label={lang === 'ja' ? `${mp.display_name} を通報` : `Report ${mp.display_name}`}

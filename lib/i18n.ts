@@ -71,7 +71,7 @@ export const translations = {
     // Daily message
     dailyMsgPlaceholder: '今日の一言を入力...',
     post: '投稿',
-    pinnedOnly: 'ピンのみ',
+    pinnedOnly: 'ピンした人だけ表示',
     all: '全員',
     // Toast
     badWord: '🚫 不適切な言葉が含まれています',
