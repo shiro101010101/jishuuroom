@@ -3,14 +3,16 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
 
-export type AmbienceId = 'rain' | 'clock' | 'crickets' | 'room'
+export type AmbienceId = 'rain' | 'clock' | 'crickets' | 'room' | 'pages' | 'pencil'
 export const AMBIENCE: { id: AmbienceId; ja: string; en: string }[] = [
   { id: 'rain',     ja: '窓に当たる雨',     en: 'Rain on the window' },
   { id: 'clock',    ja: '時計の秒針',       en: 'Clock ticking' },
   { id: 'crickets', ja: '夜の虫の声',       en: 'Night crickets' },
   { id: 'room',     ja: '静かな部屋の空気', en: 'Quiet room tone' },
+  { id: 'pages',    ja: 'ページをめくる音', en: 'Turning pages' },
+  { id: 'pencil',   ja: '遠くの鉛筆の音',   en: 'Distant pencils' },
 ]
-const DEFAULT_LEVELS: Record<AmbienceId, number> = { rain: .6, clock: .35, crickets: .3, room: .4 }
+const DEFAULT_LEVELS: Record<AmbienceId, number> = { rain: .6, clock: .35, crickets: .3, room: .4, pages: .5, pencil: .35 }
 const STORAGE_KEY = 'ambience-levels'
 
 type Running = { out: GainNode; stop: () => void }
@@ -48,6 +50,7 @@ function startSound(ctx: AudioContext, id: AmbienceId, out: GainNode): () => voi
   const white = noiseBuffer(ctx, 'white', 4)
   const timers: ReturnType<typeof setInterval>[] = []
   const nodes: AudioScheduledSourceNode[] = []
+  const cleanups: (() => void)[] = []
 
   if (id === 'rain') {
     // さーっという雨の層 + ときどき強まる風 + 窓に当たる雨粒
@@ -83,6 +86,41 @@ function startSound(ctx: AudioContext, id: AmbienceId, out: GainNode): () => voi
       timers.push(setInterval(() => { if (Math.random() < .7) chirp() }, 700 + Math.random() * 500))
     }
     voice(4350, -.5); voice(4720, .4)
+  } else if (id === 'pages') {
+    // 図書館のどこかで、ときどき誰かがページをめくる（紙がこすれる「さっ」という音）
+    const turn = () => {
+      const t = ctx.currentTime, len = .25 + Math.random() * .25
+      const src = ctx.createBufferSource(); src.buffer = white
+      const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2400 + Math.random() * 1600; bp.Q.value = .8
+      const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 900
+      const g = ctx.createGain()
+      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(.18, t + len * .3)
+      g.gain.linearRampToValueAtTime(.07, t + len * .6); g.gain.exponentialRampToValueAtTime(.0001, t + len)
+      const p = ctx.createStereoPanner(); p.pan.value = Math.random() * 1.6 - .8
+      src.connect(bp).connect(hp).connect(g).connect(p).connect(out)
+      src.start(t, Math.random() * 3, len + .05)
+    }
+    let next: ReturnType<typeof setTimeout>
+    const schedule = () => { next = setTimeout(() => { turn(); schedule() }, 4000 + Math.random() * 9000) }
+    turn(); schedule()
+    cleanups.push(() => clearTimeout(next))
+  } else if (id === 'pencil') {
+    // 遠くの席で鉛筆が紙の上を走る音（短いこすれが、文字を書くリズムで続く）
+    const stroke = (when: number) => {
+      const len = .05 + Math.random() * .12
+      const src = ctx.createBufferSource(); src.buffer = white
+      const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 5200 + Math.random() * 2500; bp.Q.value = 1.5
+      const g = ctx.createGain()
+      g.gain.setValueAtTime(0, when); g.gain.linearRampToValueAtTime(.05 + Math.random() * .04, when + .01); g.gain.linearRampToValueAtTime(0, when + len)
+      src.connect(bp).connect(g).connect(out)
+      src.start(when, Math.random() * 3, len + .02)
+    }
+    timers.push(setInterval(() => {
+      if (Math.random() < .35) return   // 考えている間は手が止まる
+      const t = ctx.currentTime, n = 3 + Math.floor(Math.random() * 6)
+      let at = t
+      for (let i = 0; i < n; i++) { stroke(at); at += .08 + Math.random() * .16 }
+    }, 1600))
   } else {
     // エアコンや外の気配のような、低くやわらかいざわめき
     const src = loop(ctx, noiseBuffer(ctx, 'brown', 6)); nodes.push(src)
@@ -93,6 +131,7 @@ function startSound(ctx: AudioContext, id: AmbienceId, out: GainNode): () => voi
 
   return () => {
     timers.forEach(clearInterval)
+    cleanups.forEach(f => f())
     nodes.forEach(n => { try { n.stop() } catch {} })
     out.disconnect()
   }

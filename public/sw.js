@@ -35,3 +35,49 @@ self.addEventListener('fetch', event => {
     )
   }
 })
+
+// ── Web Push（連続記録のお知らせなど）──
+// サーバーから { title, body, url, tag } が届く。同じ tag の通知は上書きして重ならないようにする
+// 開く先は自分のサイト内のパスだけ（外部サイトへ飛ばさない）
+function safePath(url) {
+  try {
+    const u = new URL(url || '/lobby', self.location.origin)
+    return u.origin === self.location.origin ? u.pathname + u.search + u.hash : '/lobby'
+  } catch (e) {
+    return '/lobby'
+  }
+}
+
+self.addEventListener('push', event => {
+  let data = {}
+  try { data = event.data ? event.data.json() : {} } catch (e) { data = {} }
+  const title = typeof data.title === 'string' && data.title ? data.title.slice(0, 80) : '自習室 JP'
+  const body = typeof data.body === 'string' ? data.body.slice(0, 200) : ''
+  const tag = typeof data.tag === 'string' && data.tag ? data.tag.slice(0, 64) : 'jishuuroom'
+  event.waitUntil(self.registration.showNotification(title, {
+    body,
+    tag,
+    renotify: false,
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
+    lang: 'ja',
+    data: { url: safePath(data.url) },
+  }))
+})
+
+self.addEventListener('notificationclick', event => {
+  event.notification.close()
+  const path = safePath(event.notification.data && event.notification.data.url)
+  const target = new URL(path, self.location.origin).href
+  event.waitUntil((async () => {
+    const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+    const same = wins.find(c => c.url === target)
+    if (same) return same.focus()
+    const any = wins.find(c => new URL(c.url).origin === self.location.origin)
+    if (any) {
+      await any.focus()
+      try { return await any.navigate(target) } catch (e) { /* 制御外のタブは navigate できない */ }
+    }
+    return self.clients.openWindow(target)
+  })())
+})

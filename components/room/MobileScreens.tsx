@@ -2,7 +2,7 @@
 // components/room/MobileScreens.tsx
 import AmbiencePanel from './AmbiencePanel'
 import type { useAmbience } from '@/hooks/useAmbience'
-import { useRef, useState, useEffect } from 'react'
+import { useRef, useState, useEffect, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { signOut } from 'next-auth/react'
 import TaskPanel from './TaskPanel'
@@ -43,7 +43,9 @@ type Props = {
   onOpenChat: (friendId: string) => void
   onBlock: (userId: string, name: string) => void
   onReport: (userId: string, name: string) => void
+  onViewProfile?: (userId: string) => void
   onAcceptFriend: (friendshipId: string) => void
+  onDeclineFriend?: (friendshipId: string) => void
   onToggleBgm: (id: string) => void
   onSetVolume: (v: number) => void
   onJoinRoom: (roomId: string) => void
@@ -66,6 +68,13 @@ type Props = {
   cameraOnForSafety: boolean
   userId: string
   rankRefresh?: number
+  myPrivateRooms?: Room[]
+  /** 今日の記録カード（SNS 共有） */
+  shareCard?: ReactNode
+  /** 「友達と勉強する」カード */
+  studyTogether?: ReactNode
+  /** フレンドの居場所と合流・招待ボタン */
+  renderFriendPresence?: (friendId: string, name: string) => ReactNode
 }
 
 const BGM_TRACKS = [
@@ -87,7 +96,7 @@ export default function MobileScreens({
   unreadCounts, tasks, localStream, remoteStreams, cameraOn, bgmPlaying,
   volume, bgmGainRef, ambience, notifications, weeklyStats, currentTask,
   onToggleCamera, onAddTask, onCompleteTask, onDeleteTask,
-  onOpenChat, onBlock, onReport, onAcceptFriend,
+  onOpenChat, onBlock, onReport, onViewProfile, onAcceptFriend, onDeclineFriend,
   onToggleBgm, onSetVolume, onJoinRoom, onLeaveRoom,
   todaySeconds, pomosToday, tasksDoneToday,
   lang, onUpdateShare,
@@ -98,6 +107,7 @@ export default function MobileScreens({
   cameraOnForSafety,
   userId,
   rankRefresh = 0,
+  myPrivateRooms = [], studyTogether, renderFriendPresence, shareCard,
 }: Props) {
   const router = useRouter()
   const [quote, setQuote] = useState(QUOTES[0])
@@ -108,7 +118,7 @@ export default function MobileScreens({
   const fmtStudy = (s: number) =>
     `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`
 
-  const weekDays = ['日', '月', '火', '水', '木', '金', '土']
+  const weekDays = lang === 'ja' ? ['日', '月', '火', '水', '木', '金', '土'] : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
   const weekMap: Record<number, number> = {}
   weeklyStats.forEach(d => { weekMap[d.day_of_week] = Number(d.total_seconds) })
   const maxWeek = Math.max(...Object.values(weekMap), 3600)
@@ -131,18 +141,18 @@ export default function MobileScreens({
             <button key={m}
               className={`${styles.modeBtn} ${timer.mode === m ? styles.modeBtnActive : ''}`}
               onClick={() => timer.switchMode(m)}>
-              {['集中 25分', '休憩 5分', '長休 15分'][i]}
+              {(lang === 'ja' ? ['集中 25分', '休憩 5分', '長休 15分'] : ['Focus 25m', 'Break 5m', 'Long 15m'])[i]}
             </button>
           ))}
         </div>
 
         {/* Big ring */}
         <div className={styles.ringWrap}>
-          <svg style={{ transform: 'rotate(-90deg)', filter: 'drop-shadow(0 0 10px rgba(108,138,255,.4))' }}
+          <svg style={{ transform: 'rotate(-90deg)', filter: 'drop-shadow(0 0 10px rgba(125,149,255,.4))' }}
             width="220" height="220" viewBox="0 0 220 220">
             <defs>
               <linearGradient id="mg" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#6c8aff" />
+                <stop offset="0%" stopColor="var(--accent)" />
                 <stop offset="100%" stopColor="#a78bfa" />
               </linearGradient>
             </defs>
@@ -171,21 +181,21 @@ export default function MobileScreens({
         {/* Controls */}
         <div className={styles.timerCtrl}>
           <button className={styles.btnStart} onClick={timer.toggle}>
-            {timer.running ? '⏸ 一時停止' : '▶ スタート'}
+            {timer.running ? (lang === 'ja' ? '⏸ 一時停止' : '⏸ Pause') : (lang === 'ja' ? '▶ スタート' : '▶ Start')}
           </button>
           <button className={styles.btnReset} onClick={timer.reset}>↺</button>
         </div>
 
         {/* Focus task */}
         <div className={styles.focusCard}>
-          <div className={styles.focusLbl}>集中中のタスク</div>
+          <div className={styles.focusLbl}>{lang === 'ja' ? '集中中のタスク' : 'Current task'}</div>
           <div className={styles.focusTask}>{currentTask}</div>
-          <div className={styles.sessionBadge}>セッション {timer.sessionCount} / 4</div>
+          <div className={styles.sessionBadge}>{lang === 'ja' ? 'セッション' : 'Session'} {timer.sessionCount} / 4</div>
         </div>
 
         {/* Tasks */}
         <div className={styles.section}>
-          <div className={styles.secLabel}>✅ タスク管理</div>
+          <div className={styles.secLabel}>✅ {lang === 'ja' ? 'タスク管理' : 'Tasks'}</div>
           <TaskPanel
             userId={profile.id}
             roomId={room.id}
@@ -194,6 +204,7 @@ export default function MobileScreens({
             onCompleteTask={onCompleteTask}
             onDeleteTask={onDeleteTask}
             friends={friendsForPanel}
+            lang={lang}
           />
         </div>
 
@@ -215,9 +226,14 @@ export default function MobileScreens({
           </button>
           <span className={styles.micBadge}>🔇 {lang==='ja'?'マイク禁止':'Mic Off'}</span>
           <button className={styles.leaveBtn} onClick={onLeaveRoom}>{lang==='ja'?'退室':'Leave'}</button>
-          <button onClick={() => signOut({ callbackUrl: '/' })}
-            style={{ padding:'5px 10px', background:'transparent', border:'1px solid var(--border)', borderRadius:6, color:'var(--muted)', fontSize:11, cursor:'pointer', fontFamily:'inherit' }}>
-            {lang==='ja'?'ログアウト':'Log out'}
+        </div>
+
+        {/* タイマー（部屋を見ながら操作できるように、ここにも小さく置く） */}
+        <div className={styles.miniTimer}>
+          <span className={styles.miniTimerTime}>{String(Math.floor(timer.seconds / 60)).padStart(2, '0')}:{String(timer.seconds % 60).padStart(2, '0')}</span>
+          <span className={styles.miniTimerMode}>{timer.mode === 'focus' ? (lang==='ja'?'集中':'Focus') : timer.mode === 'custom' ? (lang==='ja'?'カスタム':'Custom') : (lang==='ja'?'休憩':'Break')}</span>
+          <button className={styles.miniTimerBtn} onClick={timer.toggle} aria-label={timer.running ? (lang==='ja'?'一時停止':'Pause') : (lang==='ja'?'スタート':'Start')}>
+            {timer.running ? '⏸' : '▶'}
           </button>
         </div>
 
@@ -251,7 +267,7 @@ export default function MobileScreens({
               const mp = m.profiles
               const away = m.status === 'away'
               return (
-                <div key={m.id} className={`${styles.camCard} ${away ? styles.camCardAway : ''}`}>
+                <div key={m.id} className={`${styles.camCard} ${away ? styles.camCardAway : ''}`} onClick={() => onViewProfile?.(m.user_id)} style={{ cursor: 'pointer' }}>
                   {away && <div className={styles.awayTag}>{lang==='ja'?'😴 席外':'😴 Away'}</div>}
                   {rs
                     ? <video className={styles.camVideo} style={{ aspectRatio:"3/4", objectFit:"cover", width:"100%", height:"auto" }}
@@ -266,8 +282,8 @@ export default function MobileScreens({
                       </div>}
                   <div className={styles.camName}>
                     <span className={styles.camNameTxt}>{mp.display_name.slice(0, 6)}</span>
-                    <button className={styles.reportMiniBtn}
-                      onClick={() => onReport(m.user_id, mp.display_name)}>⚠️</button>
+                    <button className={styles.reportMiniBtn} aria-label={lang === 'ja' ? `${mp.display_name} を通報` : `Report ${mp.display_name}`}
+                      onClick={e => { e.stopPropagation(); onReport(m.user_id, mp.display_name) }}>⚠️</button>
                   </div>
                 </div>
               )
@@ -338,7 +354,7 @@ export default function MobileScreens({
 
         {/* Notification settings */}
         <div style={{ padding:'0 0 8px' }}>
-          <div className={styles.secLabel}>📨 {lang==='ja'?'離席検出の通知先':'Alert Recipient'}</div>
+          <div className={styles.secLabel}>🛡️ {lang==='ja'?'安全設定':'Safety'}</div>
           <SafetyPanel
             userId={userId}
             cameraOn={cameraOnForSafety}
@@ -360,13 +376,13 @@ export default function MobileScreens({
         <div>
           <div className={styles.secLabel}>{lang==='ja'?'🏠 ルーム一覧':'🏠 Rooms'}</div>
           <div className={styles.roomList}>
-            {allRooms.map(r => (
+            {[...(room.is_private && !myPrivateRooms.some(r => r.id === room.id) ? [room] : []), ...myPrivateRooms, ...allRooms].map(r => (
               <div key={r.id}
                 className={`${styles.roomItem} ${r.id === room.id ? styles.roomItemActive : ''}`}
                 onClick={() => router.push(`/room/${r.id}`)}>
                 <span className={styles.roomEmoji}>{r.emoji}</span>
                 <div className={styles.roomInfo}>
-                  <div className={styles.roomName}>{r.name}</div>
+                  <div className={styles.roomName}>{r.name}{r.is_private && <span style={{ fontSize: 10, color: 'var(--muted)', marginLeft: 6 }}>🔒 {lang==='ja'?'友達だけ':'Friends only'}</span>}</div>
                   <div className={styles.roomDesc}>{r.description}</div>
                 </div>
                 {r.id === room.id && <span className={styles.inRoomBadge}>{lang==='ja'?'参加中':'In Room'}</span>}
@@ -384,10 +400,12 @@ export default function MobileScreens({
     <div className={`${styles.screen} ${activeScreen === 'friends' ? styles.screenActive : ''}`}>
       <div className={styles.scroll}>
 
+        {studyTogether && <div className={styles.section}>{studyTogether}</div>}
+
         {/* Pending requests */}
         {pendingIn.length > 0 && (
           <div className={styles.section}>
-            <div className={styles.secLabel}>📨 {lang==='ja'?'📨 フレンド申請':'📨 Friend Requests'} ({pendingIn.length})</div>
+            <div className={styles.secLabel}>📨 {lang==='ja'?'フレンド申請':'Friend Requests'} ({pendingIn.length})</div>
             {pendingIn.map(req => {
               const fp = req.profiles as Profile
               return (
@@ -401,6 +419,8 @@ export default function MobileScreens({
                     <div className={styles.friendReqName}>{fp.display_name}</div>
                     <div className={styles.friendReqMeta}>{lang==='ja'?'フレンド申請が届いています':'Friend request received'}</div>
                   </div>
+                  {onDeclineFriend && <button className={styles.declineBtn}
+                    onClick={() => onDeclineFriend(req.id)}>{lang==='ja'?'見送る':'Decline'}</button>}
                   <button className={styles.acceptBtn}
                     onClick={() => onAcceptFriend(req.id)}>{lang==='ja'?'承認':'Accept'}</button>
                 </div>
@@ -419,7 +439,7 @@ export default function MobileScreens({
               <div style={{ fontSize: 36, marginBottom: 8 }}>👋</div>
               <div>{lang==='ja'?'まだフレンドがいません':'No friends yet'}</div>
               <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
-                同室のユーザーのカメラ上の⚠️から報告できます
+                {lang === 'ja' ? '同じ部屋の人の名前を押すと、プロフィールからフレンド申請できます' : "Tap someone's name in your room to send a friend request"}
               </div>
             </div>
           )}
@@ -432,14 +452,17 @@ export default function MobileScreens({
                   {fp.avatar_url
                     ? <img src={fp.avatar_url} alt="" width={40} height={40} style={{ borderRadius: '50%', objectFit: 'cover' }} />
                     : fp.display_name[0]}
-                  <div className={styles.onlineDot} />
+                  {/* 状態は名前の下に色付きで出すので、ここでは常時緑の点を出さない */}
+                  {!renderFriendPresence && <div className={styles.onlineDot} />}
                 </div>
                 <div className={styles.friendCardInfo}>
                   <div className={styles.friendCardName}>
                     {fp.display_name}
                     {unread > 0 && <span className={styles.unreadBadge}>{unread}</span>}
                   </div>
-                  <div className={styles.friendCardMeta}>{lang==='ja'?'勉強中':'Studying'}</div>
+                  {renderFriendPresence
+                    ? renderFriendPresence(f.addressee_id, fp.display_name)
+                    : <div className={styles.friendCardMeta}>{lang==='ja'?'勉強中':'Studying'}</div>}
                 </div>
                 <div className={styles.friendCardActions}>
                   <button className={styles.chatBtn}
@@ -465,7 +488,7 @@ export default function MobileScreens({
         <div className={styles.statGrid}>
           <div className={styles.statCard}>
             <div className={styles.statVal}>{fmtStudy(todaySeconds)}</div>
-            <div className={styles.statSub}>合計勉強時間</div>
+            <div className={styles.statSub}>{lang === 'ja' ? '合計勉強時間' : 'Studied today'}</div>
           </div>
           <div className={styles.statCard}>
             <div className={styles.statVal}>{pomosToday}</div>
@@ -477,9 +500,10 @@ export default function MobileScreens({
           </div>
           <div className={styles.statCard}>
             <div className={styles.statVal}>{members.length}</div>
-            <div className={styles.statSub}>同室人数</div>
+            <div className={styles.statSub}>{lang === 'ja' ? '同室人数' : 'In this room'}</div>
           </div>
         </div>
+        {shareCard && <div className={styles.section}>{shareCard}</div>}
 
         <div className={styles.section}>
           <div className={styles.secLabel}>{lang==='ja'?'🏆 勉強時間ランキング':'🏆 Study Ranking'}</div>
@@ -554,6 +578,12 @@ export default function MobileScreens({
               </div>
             </div>
           ))}
+        </div>
+
+        {/* アカウント（退室ボタンの隣に置くと押し間違えるので、ここに分ける） */}
+        <div className={styles.section}>
+          <div className={styles.secLabel}>{lang==='ja'?'アカウント':'Account'}</div>
+          <button className={styles.logoutBtn} onClick={() => signOut({ callbackUrl: '/' })}>{lang==='ja'?'ログアウト':'Log out'}</button>
         </div>
 
       </div>

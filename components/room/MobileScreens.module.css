@@ -36,12 +36,12 @@
 .focusCard { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; }
 .focusLbl { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
 .focusTask { font-size: 15px; font-weight: 500; }
-.sessionBadge { align-self: flex-start; padding: 3px 10px; background: rgba(108,138,255,.1); border: 1px solid rgba(108,138,255,.2); border-radius: 12px; font-size: 11px; color: var(--accent); }
+.sessionBadge { align-self: flex-start; padding: 3px 10px; background: rgba(125,149,255,.1); border: 1px solid rgba(125,149,255,.2); border-radius: 12px; font-size: 11px; color: var(--accent); }
 
 /* ── ROOM ── */
 .camBar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 14px; background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; }
 .camToggle { display: flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg3); cursor: pointer; font-size: 13px; color: var(--muted2); font-family: inherit; transition: .2s; }
-.camToggleOn { background: rgba(108,138,255,.12); border-color: var(--accent); color: var(--accent); }
+.camToggleOn { background: rgba(125,149,255,.12); border-color: var(--accent); color: var(--accent); }
 .micBadge { padding: 4px 10px; background: rgba(248,113,113,.1); border: 1px solid rgba(248,113,113,.25); border-radius: 5px; font-size: 11px; color: var(--red); font-weight: 700; }
 .leaveBtn { margin-left: auto; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--red); background: transparent; color: var(--red); font-size: 12px; cursor: pointer; font-family: inherit; }
 .leaveBtn:active { background: var(--red); color: #fff; }
@@ -52,23 +52,23 @@
 .camCardAway { border-color: var(--warn); }
 .camVideo { width: 100%; height: 100%; object-fit: cover; display: block; position: absolute; inset: 0; }
 .camOff { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--bg3); }
-.camAv { width: 56px; height: 56px; border-radius: 50%; background: rgba(108,138,255,.15); color: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; overflow: hidden; }
+.camAv { width: 56px; height: 56px; border-radius: 50%; background: rgba(125,149,255,.15); color: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; overflow: hidden; }
 .camName { position: absolute; bottom: 0; left: 0; right: 0; padding: 4px 6px; background: linear-gradient(transparent,rgba(var(--shadow),calc(.8 * var(--sk)))); display: flex; align-items: center; justify-content: space-between; }
 .camNameTxt { font-size: 10px; font-weight: 500; }
 .camBadge { font-size: 8px; padding: 1px 4px; border-radius: 3px; font-weight: 700; }
 .badgeStudying { background: rgba(52,211,153,.2); color: var(--accent3); }
 .awayTag { position: absolute; top: 6px; left: 6px; right: 6px; background: rgba(245,158,11,.9); border-radius: 4px; padding: 3px 6px; font-size: 9px; font-weight: 700; color: #000; z-index: 2; }
-.reportMiniBtn { background: transparent; border: none; cursor: pointer; font-size: 11px; padding: 0; }
+.reportMiniBtn { background: transparent; border: none; cursor: pointer; font-size: 11px; padding: 0; min-width: 32px; min-height: 32px; margin: -8px -8px -8px 0; display: inline-flex; align-items: center; justify-content: center; }
 
 .roomList { display: flex; flex-direction: column; gap: 8px; }
 .roomItem { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; cursor: pointer; transition: .2s; }
 .roomItem:active { border-color: var(--accent); }
-.roomItemActive { border-color: var(--accent); background: rgba(108,138,255,.05); }
+.roomItemActive { border-color: var(--accent); background: rgba(125,149,255,.05); }
 .roomEmoji { font-size: 22px; flex-shrink: 0; }
 .roomInfo { flex: 1; min-width: 0; }
 .roomName { font-size: 13px; font-weight: 500; }
 .roomDesc { font-size: 11px; color: var(--muted); margin-top: 2px; }
-.inRoomBadge { padding: 3px 8px; background: rgba(108,138,255,.12); border: 1px solid rgba(108,138,255,.25); border-radius: 10px; font-size: 10px; color: var(--accent); flex-shrink: 0; }
+.inRoomBadge { padding: 3px 8px; background: rgba(125,149,255,.12); border: 1px solid rgba(125,149,255,.25); border-radius: 10px; font-size: 10px; color: var(--accent); flex-shrink: 0; }
 
 /* ── FRIENDS ── */
 .emptyState { text-align: center; padding: 32px 16px; color: var(--muted2); font-size: 13px; }
@@ -81,7 +81,7 @@
 .acceptBtn { padding: 7px 14px; background: var(--accent3); border: none; border-radius: 8px; color: #000; font-size: 12px; font-weight: 700; cursor: pointer; font-family: inherit; }
 
 .friendCard { display: flex; align-items: center; gap: 10px; padding: 12px 14px; background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; transition: .2s; }
-.friendAv { width: 40px; height: 40px; border-radius: 50%; background: rgba(108,138,255,.15); color: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; flex-shrink: 0; overflow: hidden; position: relative; }
+.friendAv { width: 40px; height: 40px; border-radius: 50%; background: rgba(125,149,255,.15); color: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; flex-shrink: 0; overflow: hidden; position: relative; }
 .onlineDot { position: absolute; bottom: 0; right: 0; width: 10px; height: 10px; border-radius: 50%; background: var(--accent3); border: 2px solid var(--bg2); }
 .friendCardInfo { flex: 1; min-width: 0; }
 .friendCardName { font-size: 14px; font-weight: 500; display: flex; align-items: center; gap: 6px; }
@@ -102,13 +102,13 @@
 .weekChart { display: flex; align-items: flex-end; gap: 4px; height: 80px; background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 12px 8px; }
 .wbarWrap { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; justify-content: flex-end; }
 .wbar { width: 100%; border-radius: 3px 3px 0 0; background: linear-gradient(to top, var(--accent), var(--accent2)); min-height: 3px; opacity: .6; transition: height .5s; }
-.wbarToday { opacity: 1; box-shadow: 0 0 8px rgba(108,138,255,.4); }
+.wbarToday { opacity: 1; box-shadow: 0 0 8px rgba(125,149,255,.4); }
 .wlbl { font-size: 9px; color: var(--muted); }
 
 .bgmList { display: flex; flex-direction: column; gap: 6px; }
 .bgmItem { display: flex; align-items: center; gap: 10px; padding: 12px 14px; background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; cursor: pointer; transition: .2s; }
 .bgmItem:active { border-color: var(--accent); }
-.bgmPlaying { border-color: var(--accent); background: rgba(108,138,255,.07); }
+.bgmPlaying { border-color: var(--accent); background: rgba(125,149,255,.07); }
 .bgmPlay { width: 24px; height: 24px; border-radius: 50%; background: var(--bg); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 10px; color: var(--muted2); }
 .bgmPlaying .bgmPlay { background: var(--accent); border-color: var(--accent); color: #fff; animation: spin 3s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -161,3 +161,12 @@
 /* 静かな夜に合わせて、ボタンは光らせすぎない */
 .btnStart { background: rgba(125,149,255,.2); border: 1px solid rgba(125,149,255,.38); color: var(--text); box-shadow: inset 0 1px 0 rgba(255,255,255,.1), 0 10px 30px rgba(125,149,255,.12); }
 .btnStart:hover { background: rgba(125,149,255,.3); }
+.declineBtn { padding: 7px 12px; margin-right: 6px; min-height: 36px; background: transparent; border: 1px solid var(--border2); border-radius: 10px; color: var(--muted2); font-size: 12px; cursor: pointer; font-family: inherit; }
+.acceptBtn { min-height: 36px; }
+
+/* ルーム画面の小さなタイマー */
+.miniTimer { display: flex; align-items: center; gap: 10px; margin: 0 4px 10px; padding: 8px 12px; border-radius: 14px; background: var(--glass); border: 1px solid var(--glass-border); }
+.miniTimerTime { font-family: var(--font-num); font-variant-numeric: tabular-nums; font-size: 22px; letter-spacing: .04em; }
+.miniTimerMode { font-size: 12px; color: var(--muted2); flex: 1; }
+.miniTimerBtn { width: 44px; height: 44px; border-radius: 50%; border: none; cursor: pointer; font-size: 16px; color: #fff; background: linear-gradient(135deg, #5a72f0, #8b5cf6); }
+.logoutBtn { width: 100%; min-height: 44px; border-radius: 12px; border: 1px solid rgba(248,113,113,.4); background: transparent; color: var(--red); font-size: 14px; font-family: inherit; cursor: pointer; }

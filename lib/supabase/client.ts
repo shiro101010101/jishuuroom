@@ -7,7 +7,8 @@ let cached: { token: string | null; expiresAt: number } | null = null
 let inflight: Promise<string | null> | null = null
 
 async function getAccessToken(): Promise<string | null> {
-  if (cached && (cached.token === null || cached.expiresAt - 60_000 > Date.now())) return cached.token
+  // token が null の場合も expiresAt（5分後）までだけ使い回し、その後は取り直す
+  if (cached && cached.expiresAt - (cached.token ? 60_000 : 0) > Date.now()) return cached.token
   inflight ??= fetch('/api/supabase-token', { cache: 'no-store' })
     .then(r => (r.ok ? r.json() : { token: null, expiresAt: null }))
     .then(({ token, expiresAt }) => {

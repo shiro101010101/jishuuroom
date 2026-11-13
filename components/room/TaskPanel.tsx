@@ -14,11 +14,13 @@ type Props = {
   onDeleteTask: (taskId: string) => Promise<void>
   onUpdateShare?: (taskId: string, scope: 'private' | 'friends' | 'room') => Promise<void>
   friends: { id: string; display_name: string; avatar_url: string | null }[]
+  lang?: 'ja' | 'en'
 }
 
 export default function TaskPanel({
-  userId, roomId, tasks, onAddTask, onCompleteTask, onDeleteTask, onUpdateShare, friends
+  userId, roomId, tasks, onAddTask, onCompleteTask, onDeleteTask, onUpdateShare, friends, lang = 'ja'
 }: Props) {
+  const tr = (ja: string, en: string) => (lang === 'ja' ? ja : en)
   const [input, setInput] = useState('')
   const [activeTab, setActiveTab] = useState<'mine' | 'shared'>('mine')
   const {
@@ -40,9 +42,9 @@ export default function TaskPanel({
   function ShareToggle({ task }: { task: Task & { share_scope?: string } }) {
     const scope = (task.share_scope || 'private') as 'private' | 'friends' | 'room'
     const options: { value: 'private' | 'friends' | 'room'; label: string; icon: string }[] = [
-      { value: 'private', label: '🔒 非公開（自分のみ）', icon: '🔒' },
-      { value: 'friends', label: '👥 フレンドに公開', icon: '👥' },
-      { value: 'room', label: '🏠 ルーム全員に公開', icon: '🏠' },
+      { value: 'private', label: tr('🔒 非公開（自分のみ）', '🔒 Private (only me)'), icon: '🔒' },
+      { value: 'friends', label: tr('👥 フレンドに公開', '👥 Visible to friends'), icon: '👥' },
+      { value: 'room', label: tr('🏠 ルーム全員に公開', '🏠 Visible to this room'), icon: '🏠' },
     ]
     return (
       <div className={styles.shareToggle}>
@@ -65,7 +67,7 @@ export default function TaskPanel({
       {/* Study Pairs */}
       {(studyPairs.length > 0 || pendingPairRequests.length > 0) && (
         <div className={styles.pairsSection}>
-          <div className={styles.secLabel}>🤝 一緒に勉強中</div>
+          <div className={styles.secLabel}>🤝 {tr('一緒に勉強中', 'Studying together')}</div>
 
           {/* 承認待ちリクエスト */}
           {pendingPairRequests.map(req => (
@@ -77,13 +79,13 @@ export default function TaskPanel({
               </div>
               <div className={styles.pairInfo}>
                 <div className={styles.pairName}>{req.partner?.display_name}</div>
-                <div className={styles.pairMeta}>一緒に勉強しませんか？</div>
+                <div className={styles.pairMeta}>{tr('一緒に勉強しませんか？', 'Wants to study together')}</div>
               </div>
               <div className={styles.pairActions}>
                 <button
                   className={`${styles.pairBtn} ${styles.pairBtnAccept}`}
                   onClick={() => req.partner && acceptPair(req.partner.id)}
-                >✓ 承認</button>
+                >✓ {tr('承認', 'Accept')}</button>
               </div>
             </div>
           ))}
@@ -99,12 +101,12 @@ export default function TaskPanel({
               </div>
               <div className={styles.pairInfo}>
                 <div className={styles.pairName}>{pair.partner?.display_name}</div>
-                <div className={styles.pairMeta}>🟢 一緒に勉強中</div>
+                <div className={styles.pairMeta}>🟢 {tr('一緒に勉強中', 'Studying together')}</div>
               </div>
               <button
                 className={`${styles.pairBtn} ${styles.pairBtnEnd}`}
                 onClick={() => pair.partner && endPair(pair.partner.id)}
-              >終了</button>
+              >{tr('終了', 'End')}</button>
             </div>
           ))}
         </div>
@@ -113,7 +115,7 @@ export default function TaskPanel({
       {/* Pair Request Buttons for Friends */}
       {friends.length > 0 && studyPairs.length === 0 && pendingPairRequests.length === 0 && (
         <div className={styles.pairSuggest}>
-          <div className={styles.secLabel}>🤝 一緒に勉強しませんか？</div>
+          <div className={styles.secLabel}>🤝 {tr('一緒に勉強しませんか？', 'Study together?')}</div>
           <div className={styles.pairSuggestList}>
             {friends.slice(0, 3).map(f => (
               <button
@@ -124,7 +126,7 @@ export default function TaskPanel({
                 {f.avatar_url
                   ? <img src={f.avatar_url} width={20} height={20} style={{ borderRadius: '50%' }} alt="" />
                   : <span>{f.display_name[0]}</span>}
-                {f.display_name} に申請
+                {tr(`${f.display_name} に申請`, `Ask ${f.display_name}`)}
               </button>
             ))}
           </div>
@@ -137,13 +139,13 @@ export default function TaskPanel({
           className={`${styles.tab} ${activeTab === 'mine' ? styles.tabActive : ''}`}
           onClick={() => setActiveTab('mine')}
         >
-          自分のタスク ({tasks.length})
+          {tr('自分のタスク', 'My tasks')} ({tasks.length})
         </button>
         <button
           className={`${styles.tab} ${activeTab === 'shared' ? styles.tabActive : ''}`}
           onClick={() => setActiveTab('shared')}
         >
-          共有タスク
+          {tr('共有タスク', 'Shared')}
           {sharedTasks.length > 0 && (
             <span className={styles.badge}>{sharedTasks.length}</span>
           )}
@@ -159,7 +161,7 @@ export default function TaskPanel({
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleAdd()}
-              placeholder="タスクを追加..."
+              placeholder={tr('タスクを追加...', 'Add a task...')}
             />
             <button className={styles.addBtn} onClick={handleAdd}>+</button>
           </div>
@@ -167,7 +169,7 @@ export default function TaskPanel({
           {/* My Tasks */}
           <div className={styles.taskList}>
             {tasks.length === 0 && (
-              <div className={styles.empty}>タスクを追加して今日の目標を設定しよう！</div>
+              <div className={styles.empty}>{tr('タスクを追加して今日の目標を設定しよう！', "Add a task to set today's goal!")}</div>
             )}
             {tasks.map(task => {
               const t = task as Task & { share_scope?: string }
@@ -176,7 +178,7 @@ export default function TaskPanel({
                   <button
                     className={styles.checkBtn}
                     onClick={() => onCompleteTask(task)}
-                    title="完了にする"
+                    title={tr('完了にする', 'Mark done')}
                   >✓</button>
                   <span className={styles.taskTitle}>{task.title}</span>
                   <ShareToggle task={t} />
@@ -195,7 +197,7 @@ export default function TaskPanel({
         <div className={styles.taskList}>
           {sharedTasks.length === 0 && (
             <div className={styles.empty}>
-              フレンドや同室のユーザーが<br />タスクを共有するとここに表示されます
+              {tr('フレンドや同室のユーザーが', 'Tasks shared by friends and')}<br />{tr('タスクを共有するとここに表示されます', 'people in this room appear here')}
             </div>
           )}
           {sharedTasks.map(task => (
@@ -210,11 +212,11 @@ export default function TaskPanel({
                 <div className={styles.sharedBy}>
                   {task.display_name} ·
                   <span className={styles.scopeBadge}>
-                    {task.share_scope === 'friends' ? '👥 フレンド' : '🏠 ルーム'}
+                    {task.share_scope === 'friends' ? tr('👥 フレンド', '👥 Friends') : tr('🏠 ルーム', '🏠 Room')}
                   </span>
                 </div>
               </div>
-              {task.completed && <span className={styles.completedBadge}>✅ 完了！</span>}
+              {task.completed && <span className={styles.completedBadge}>✅ {tr('完了！', 'Done!')}</span>}
             </div>
           ))}
         </div>

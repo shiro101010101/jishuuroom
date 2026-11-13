@@ -1,6 +1,7 @@
 'use client'
 // 環境音パネル：好きな音を重ねて、それぞれの音量を調整できる
 import { AMBIENCE, type AmbienceId, type useAmbience } from '@/hooks/useAmbience'
+import { SCENES, setLibraryScene, useLibraryScene, type SceneId } from '@/hooks/useLibraryScene'
 import styles from './AmbiencePanel.module.css'
 
 const GLYPH: Record<AmbienceId, React.ReactNode> = {
@@ -8,11 +9,37 @@ const GLYPH: Record<AmbienceId, React.ReactNode> = {
   clock: <><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></>,
   crickets: <path d="M12 3c-2.5 3-4 6-4 9a4 4 0 0 0 8 0c0-3-1.5-6-4-9zM12 16v5M8 21h8"/>,
   room: <path d="M3 21V10l9-7 9 7v11M9 21v-6h6v6"/>,
+  pages: <path d="M2 5c3-1 6-1 10 1v14c-4-2-7-2-10-1zM22 5c-3-1-6-1-10 1v14c4-2 7-2 10-1z"/>,
+  pencil: <path d="M4 20l1-5L16 4l4 4L9 19zM14 6l4 4"/>,
+}
+
+/** 背景（深夜の図書館）を選ぶ。選んだものは端末に保存される */
+function ScenePicker({ lang }: { lang: 'ja' | 'en' }) {
+  const scene = useLibraryScene()
+  const items: { id: SceneId; ja: string; en: string }[] = [...SCENES, { id: 'none', ja: '背景なし', en: 'None' }]
+  return (
+    <div className={styles.sceneWrap}>
+      <div className={styles.head}>
+        <span>{lang === 'ja' ? '背景' : 'Scene'}</span>
+        <span className={styles.hint}>{lang === 'ja' ? '深夜の図書館' : 'Library at night'}</span>
+      </div>
+      <div className={styles.scenes} role="radiogroup" aria-label={lang === 'ja' ? '背景' : 'Scene'}>
+        {items.map(it => (
+          <button key={it.id} role="radio" aria-checked={scene === it.id} onClick={() => setLibraryScene(it.id)}
+            className={`${styles.scene} ${scene === it.id ? styles.sceneOn : ''}`}>
+            <span className={styles.sceneThumb} style={it.id === 'none' ? undefined : { backgroundImage: `url(/library/${it.id}-thumb.webp)` }}/>
+            <span className={styles.sceneName}>{lang === 'ja' ? it.ja : it.en}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 export default function AmbiencePanel({ ambience, lang }: { ambience: ReturnType<typeof useAmbience>; lang: 'ja' | 'en' }) {
   return (
     <div className={styles.wrap}>
+      <ScenePicker lang={lang}/>
       <div className={styles.head}>
         <span>{lang === 'ja' ? '環境音' : 'Ambience'}</span>
         <span className={styles.hint}>{lang === 'ja' ? '重ねて流せます' : 'Mix as you like'}</span>

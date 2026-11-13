@@ -27,7 +27,7 @@
 
 /* Day column */
 .dayCol { position: relative; border-left: 1px solid var(--border); transition: background .15s; }
-.dayColDragOver { background: rgba(108,138,255,.04); }
+.dayColDragOver { background: rgba(125,149,255,.04); }
 .hourLine { position: absolute; left: 0; right: 0; height: 1px; background: var(--border); }
 .halfLine { position: absolute; left: 0; right: 0; height: 1px; background: rgba(37,40,48,.5); }
 
@@ -53,7 +53,7 @@
 .nowDot { position: absolute; left: -3px; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: #f87171; }
 
 /* Drop hint */
-.dropHint { position: absolute; inset: 0; background: rgba(108,138,255,.06); border: 1px dashed rgba(108,138,255,.4); border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--accent); z-index: 3; pointer-events: none; }
+.dropHint { position: absolute; inset: 0; background: rgba(125,149,255,.06); border: 1px dashed rgba(125,149,255,.4); border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--accent); z-index: 3; pointer-events: none; }
 
 /* Todo panel */
 .todoPanel { padding: 12px 14px; border-top: 1px solid var(--border); background: var(--bg3); flex-shrink: 0; }

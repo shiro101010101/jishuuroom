@@ -1,0 +1,80 @@
+/* components/exam/ExamLanding.module.css — 試験別ランディングページ（色はすべて globals.css のトークンから） */
+.page { min-height: 100dvh; position: relative; z-index: 1; color: var(--text); }
+
+.header { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  height: calc(60px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 28px 0;
+  background: rgba(var(--scrim),.25); border-bottom: 1px solid var(--glass-border);
+  backdrop-filter: blur(30px) saturate(160%); -webkit-backdrop-filter: blur(30px) saturate(160%); }
+.logo { display: flex; align-items: center; gap: 10px; min-height: 40px; font-weight: 600; font-size: 14px; letter-spacing: .04em; color: var(--text); text-decoration: none; }
+.logoMark { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 500; color: #fff;
+  background: radial-gradient(circle at 25% 15%, #8ea2ff 0, #3c4fb8 55%, #141a3a 100%); box-shadow: inset 0 1px 0 rgba(255,255,255,.3); }
+.headerRight { display: flex; align-items: center; gap: 10px; }
+.headerCta { display: inline-flex; align-items: center; min-height: 40px; padding: 0 16px; border-radius: 12px; font-size: 13px; font-weight: 500; text-decoration: none;
+  color: var(--accent); border: 1px solid rgba(125,149,255,.4); background: rgba(125,149,255,.1); }
+.headerCta:hover { background: rgba(125,149,255,.2); }
+
+.main { max-width: 960px; margin: 0 auto; padding: 56px 28px 48px; display: flex; flex-direction: column; gap: 56px; }
+
+.hero { display: flex; flex-direction: column; gap: 18px; }
+.eyebrow { font-size: 12px; letter-spacing: .16em; color: var(--accent2); }
+.h1 { font-size: clamp(28px, 6vw, 44px); font-weight: 700; line-height: 1.35; letter-spacing: .02em; }
+.br { display: none; }
+.lead { max-width: 640px; font-size: 15.5px; line-height: 1.9; color: var(--muted2); }
+.ctaRow { display: flex; align-items: center; gap: 14px 18px; flex-wrap: wrap; margin-top: 6px; }
+.cta { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 0 28px; border-radius: 14px;
+  font-size: 15px; font-weight: 700; color: #fff; text-decoration: none; letter-spacing: .04em;
+  background: linear-gradient(135deg, #5a72f0, #8b5cf6); box-shadow: 0 10px 28px rgba(90,114,240,.32); transition: transform .15s, box-shadow .15s; }
+.cta:hover { transform: translateY(-1px); box-shadow: 0 14px 34px rgba(90,114,240,.42); }
+.ctaNote { font-size: 12.5px; color: var(--muted); }
+
+.h2 { font-size: 14px; font-weight: 700; letter-spacing: .08em; color: var(--muted2); margin-bottom: 16px; }
+
+.benefits { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.card, .panel, .faqItem, .final { background: var(--glass); border: 1px solid var(--glass-border); box-shadow: var(--glass-hi);
+  backdrop-filter: blur(30px) saturate(160%); -webkit-backdrop-filter: blur(30px) saturate(160%); }
+.card { padding: 22px 20px; border-radius: 20px; }
+.cardIcon { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 20px; background: rgba(var(--fg),.06); margin-bottom: 14px; }
+.cardTitle { font-size: 15.5px; font-weight: 700; margin-bottom: 8px; }
+.cardBody { font-size: 13.5px; line-height: 1.8; color: var(--muted2); }
+
+.panel { padding: 24px; border-radius: 20px; }
+.tips { display: flex; flex-direction: column; gap: 12px; list-style: none; padding: 0; }
+.tips li { position: relative; padding-left: 26px; font-size: 14px; line-height: 1.8; color: var(--text); }
+.tips li::before { content: '✓'; position: absolute; left: 0; top: 0; color: var(--accent3); font-weight: 700; }
+
+.faq { display: flex; flex-direction: column; gap: 10px; }
+.faqItem { border-radius: 16px; overflow: hidden; }
+.faqItem summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; padding: 14px 18px;
+  font-size: 14.5px; font-weight: 500; cursor: pointer; list-style: none; }
+.faqItem summary::-webkit-details-marker { display: none; }
+.faqItem summary::after { content: '+'; flex-shrink: 0; font-size: 18px; color: var(--muted); transition: transform .2s; }
+.faqItem[open] summary::after { transform: rotate(45deg); }
+.faqItem p { padding: 0 18px 16px; font-size: 13.5px; line-height: 1.85; color: var(--muted2); }
+
+.final { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px; padding: 36px 24px; border-radius: 24px;
+  background: linear-gradient(135deg, rgba(125,149,255,.16), rgba(180,140,255,.1)); border-color: rgba(125,149,255,.35); }
+.finalTitle { font-size: clamp(20px, 4vw, 26px); font-weight: 700; letter-spacing: .03em; }
+.finalBody { max-width: 520px; font-size: 14px; line-height: 1.8; color: var(--muted2); margin-bottom: 8px; }
+
+.otherLinks { display: flex; flex-wrap: wrap; gap: 8px; }
+.otherLinks a { display: inline-flex; align-items: center; gap: 4px; min-height: 40px; padding: 0 14px; border-radius: 999px; font-size: 13px; text-decoration: none;
+  color: var(--muted2); border: 1px solid rgba(var(--fg),.1); background: rgba(var(--fg),.04); }
+.otherLinks a:hover { color: var(--text); border-color: rgba(125,149,255,.5); }
+
+.footer { max-width: 960px; margin: 0 auto; padding: 0 28px max(32px, env(safe-area-inset-bottom)); display: flex; gap: 18px; font-size: 12px; }
+.footer a { display: inline-flex; align-items: center; min-height: 40px; color: var(--muted); text-decoration: none; }
+.footer a:hover { color: var(--text); }
+
+/* 明るいテーマ：ガラスが背景に溶けないよう少しだけ濃く */
+:root[data-theme="light"] .card, :root[data-theme="light"] .panel, :root[data-theme="light"] .faqItem { background: var(--glass-strong); }
+:root[data-theme="light"] .eyebrow { color: var(--accent); }
+
+@media (max-width: 760px) {
+  .header { padding-left: 16px; padding-right: 16px; }
+  .main { padding: 36px 16px 40px; gap: 44px; }
+  .benefits { grid-template-columns: 1fr; }
+  .br { display: inline; }
+  .cta { width: 100%; }
+  .panel { padding: 20px 18px; }
+  .footer { padding-left: 16px; padding-right: 16px; }
+}

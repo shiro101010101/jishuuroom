@@ -1,0 +1,15 @@
+.page { min-height: 100vh; padding: max(32px, env(safe-area-inset-top)) 16px 64px; position: relative; z-index: 1; }
+.doc { max-width: 760px; margin: 0 auto; padding: 32px clamp(18px, 5vw, 48px); border-radius: 22px; background: var(--glass); border: 1px solid var(--glass-border); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); color: var(--text); line-height: 1.85; font-size: 14px; }
+.back { display: inline-block; margin-bottom: 18px; font-size: 13px; color: var(--muted2); text-decoration: none; }
+.back:hover { color: var(--text); }
+.doc h1 { font-size: 24px; margin-bottom: 4px; }
+.updated { font-size: 12px; color: var(--muted); margin-bottom: 24px; }
+.doc h2 { font-size: 16px; margin: 28px 0 8px; padding-top: 8px; border-top: 1px solid rgba(var(--fg),.08); }
+.doc p, .doc li { color: var(--muted2); }
+.doc ul, .doc ol { padding-left: 1.4em; display: flex; flex-direction: column; gap: 4px; }
+.doc a { color: var(--accent); }
+.back { min-height: 40px; display: inline-flex; align-items: center; }
+.table { width: 100%; border-collapse: collapse; margin: 16px 0 24px; font-size: 14px; }
+.table th, .table td { text-align: left; vertical-align: top; padding: 12px 10px; border-bottom: 1px solid rgba(var(--fg),.1); line-height: 1.7; }
+.table th { width: 32%; font-weight: 600; color: var(--muted2); }
+@media (max-width: 560px) { .table th, .table td { display: block; width: 100%; padding: 6px 0; } .table th { padding-top: 14px; border-bottom: none; } }

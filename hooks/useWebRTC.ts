@@ -5,11 +5,16 @@
 import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
-const ICE_SERVERS: RTCConfiguration = {
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-  ],
+// 映像は必ず中継サーバー（TURN）経由にする。直接つなぐ（P2P）と、同じ部屋の人に自分の IP アドレスが伝わってしまうため。
+// 中継の接続情報は /api/turn から受け取る。中継が使えないときはカメラ映像を共有しない（IP を守ることを優先）。
+export type RelayStatus = 'loading' | 'relay' | 'unavailable'
+async function loadRelayConfig(): Promise<RTCConfiguration | null> {
+  try {
+    const res = await fetch('/api/turn', { cache: 'no-store' })
+    const data = await res.json()
+    if (!data?.relay || !Array.isArray(data.iceServers) || data.iceServers.length === 0) return null
+    return { iceServers: data.iceServers, iceTransportPolicy: 'relay' }
+  } catch { return null }
 }
 
 type Peer = {
@@ -21,7 +26,7 @@ type Peer = {
   queue: Promise<void>       // シグナルを順番に処理する
 }
 
-type Signal = { id: string; from_user: string; type: string; payload: any }
+type Signal = { id: string; room_id?: string; from_user: string; type: string; payload: any }
 
 /**
  * @param memberIds 今ルームに接続している他のメンバー（自分以外）
@@ -32,6 +37,31 @@ export function useWebRTC(roomId: string, userId: string, cameraOn: boolean, mem
   const peersRef = useRef<Map<string, Peer>>(new Map())
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map())
   const [localStream, setLocalStream] = useState<MediaStream | null>(null)
+  const configRef = useRef<RTCConfiguration | null>(null)
+  const [relayStatus, setRelayStatus] = useState<RelayStatus>('loading')
+  useEffect(() => {
+    let alive = true
+    const load = async () => {
+      const cfg = await loadRelayConfig()
+      if (!alive) return
+      configRef.current = cfg
+      setRelayStatus(cfg ? 'relay' : 'unavailable')
+    }
+    load()
+    // 接続情報は 4 時間で切れるので、3 時間ごとに更新する
+    const t = setInterval(async () => {
+      const cfg = await loadRelayConfig()
+      if (!alive || !cfg) return
+      configRef.current = cfg
+      peersRef.current.forEach(p => { try { p.pc.setConfiguration(cfg) } catch {} })
+    }, 3 * 60 * 60 * 1000)
+    return () => { alive = false; clearInterval(t) }
+  }, [])
+  // 今この部屋にいるメンバーだけと通信する（部屋の外の人から接続を求められても応じない）
+  const memberIdsRef = useRef<string[]>(memberIds)
+  memberIdsRef.current = memberIds
+  // メンバー一覧の反映より先に届いたシグナルは少しだけ保留する
+  const heldRef = useRef<{ s: Signal; at: number }[]>([])
 
   function send(to: string, type: string, payload: unknown) {
     return (supabase as any).from('webrtc_signals').insert({ room_id: roomId, from_user: userId, to_user: to, type, payload })
@@ -68,11 +98,13 @@ export function useWebRTC(roomId: string, userId: string, cameraOn: boolean, mem
     }
   }
 
-  function ensurePeer(targetId: string): Peer {
+  function ensurePeer(targetId: string): Peer | null {
     const existing = peersRef.current.get(targetId)
     if (existing && existing.pc.connectionState !== 'closed') return existing
+    // 中継サーバーが使えないときは接続しない（IP アドレスを相手に渡さないため）
+    if (!configRef.current) return null
 
-    const pc = new RTCPeerConnection(ICE_SERVERS)
+    const pc = new RTCPeerConnection(configRef.current)
     const peer: Peer = { pc, polite: userId > targetId, makingOffer: false, ignoreOffer: false, pendingCandidates: [], queue: Promise.resolve() }
     peersRef.current.set(targetId, peer)
 
@@ -96,22 +128,34 @@ export function useWebRTC(roomId: string, userId: string, cameraOn: boolean, mem
       setRemote(targetId, stream)
     }
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'failed') pc.restartIce()
+      if (pc.connectionState === 'failed') { setRemote(targetId, null); pc.restartIce() }
       if (pc.connectionState === 'closed') setRemote(targetId, null)
     }
     syncTracks(pc)
     // シグナルが1つでも欠けると交渉が止まるので、一定時間つながらなければやり直す
-    const watchdog = setInterval(() => {
-      if (pc.connectionState === 'closed') { clearInterval(watchdog); return }
-      if (pc.connectionState === 'connected') return
-      if (pc.getSenders().some(s => s.track) && pc.signalingState === 'stable') pc.restartIce()
-    }, 12_000)
+    let stuckSince = 0
+    const watchdog = setInterval(async () => {
+      if (pc.connectionState === 'closed' || peersRef.current.get(targetId) !== peer) { clearInterval(watchdog); return }
+      if (pc.connectionState === 'connected') { stuckSince = 0; return }
+      // 自分の offer に返事が来ないまま止まっている → 取り消して出し直す（相手が受け取り損ねた場合の復旧）
+      if (pc.signalingState === 'have-local-offer') {
+        if (!stuckSince) { stuckSince = Date.now(); return }
+        if (Date.now() - stuckSince < 10_000) return
+        stuckSince = 0
+        try { await pc.setLocalDescription({ type: 'rollback' }) } catch {}
+        pc.restartIce()
+        return
+      }
+      stuckSince = 0
+      if (pc.signalingState === 'stable') pc.restartIce()
+    }, 6_000)
     return peer
   }
 
   async function handleSignal({ from_user: from, type, payload }: Signal) {
     if (type === 'bye') { closePeer(from); return }
     const peer = ensurePeer(from)
+    if (!peer) return
     const { pc } = peer
     if (type === 'description' || type === 'offer' || type === 'answer') {
       const desc = payload as RTCSessionDescriptionInit
@@ -164,7 +208,31 @@ export function useWebRTC(roomId: string, userId: string, cameraOn: boolean, mem
     if (localStream) memberIds.forEach(id => { if (id !== userId) ensurePeer(id) })
     // いなくなった人との接続は閉じる
     peersRef.current.forEach((_, id) => { if (!memberIds.includes(id)) closePeer(id) })
-  }, [localStream, memberKey])
+  }, [localStream, memberKey, relayStatus])
+
+  function dispatchSignal(s: Signal) {
+    // 中継サーバーの準備ができるまでは保留（準備できたら下の effect で処理する）
+    if (s.type !== 'bye' && !configRef.current) { heldRef.current.push({ s, at: Date.now() }); return }
+    const run = () => handleSignal(s).catch(e => console.error('signal error:', e))
+      .finally(() => { supabase.from('webrtc_signals').delete().eq('id', s.id).then(() => {}) })
+    // 同じ相手からのシグナルは届いた順に処理する
+    const peer = s.type === 'bye' ? peersRef.current.get(s.from_user) : ensurePeer(s.from_user)
+    if (peer) peer.queue = peer.queue.then(run)
+    else run()
+  }
+
+  // メンバーが増えたら、保留していたその人のシグナルを処理する（30秒より古いものは捨てる）
+  useEffect(() => {
+    if (!configRef.current) return // 中継サーバーの準備ができてから処理する
+    const now = Date.now()
+    const keep: { s: Signal; at: number }[] = []
+    for (const h of heldRef.current) {
+      if (now - h.at > 30_000) { supabase.from('webrtc_signals').delete().eq('id', h.s.id).then(() => {}); continue }
+      if (memberIds.includes(h.s.from_user)) dispatchSignal(h.s)
+      else keep.push(h)
+    }
+    heldRef.current = keep
+  }, [memberKey, relayStatus])
 
   // シグナルの受信
   useEffect(() => {
@@ -174,14 +242,29 @@ export function useWebRTC(roomId: string, userId: string, cameraOn: boolean, mem
         event: 'INSERT', schema: 'public', table: 'webrtc_signals', filter: `to_user=eq.${userId}`,
       }, ({ new: signal }) => {
         const s = signal as Signal
-        const run = () => handleSignal(s).catch(e => console.error('signal error:', e))
-          .finally(() => { supabase.from('webrtc_signals').delete().eq('id', s.id).then(() => {}) })
-        // 同じ相手からのシグナルは届いた順に処理する
-        const peer = s.type === 'bye' ? peersRef.current.get(s.from_user) : ensurePeer(s.from_user)
-        if (peer) peer.queue = peer.queue.then(run)
-        else run()
+        // 別の部屋宛てのシグナルは無視する
+        if (s.room_id && s.room_id !== roomId) return
+        if (s.type === 'bye') { dispatchSignal(s); return }
+        // 部屋のメンバー以外からの接続要求には応じない（カメラ映像を勝手に受け取られないように）
+        if (!memberIdsRef.current.includes(s.from_user)) {
+          heldRef.current = [...heldRef.current.filter(h => Date.now() - h.at < 30_000), { s, at: Date.now() }].slice(-50)
+          return
+        }
+        dispatchSignal(s)
       })
-      .subscribe()
+      .subscribe(async (status: string) => {
+        if (status !== 'SUBSCRIBED') return
+        // 購読を始める前に届いていたシグナル（後から入室した直後など）を拾い直す
+        const since = new Date(Date.now() - 60_000).toISOString()
+        const { data } = await (supabase as any).from('webrtc_signals')
+          .select('id, room_id, from_user, type, payload, created_at')
+          .eq('to_user', userId).eq('room_id', roomId).gte('created_at', since)
+          .order('created_at', { ascending: true })
+        for (const s of (data ?? []) as Signal[]) {
+          if (s.type === 'bye' || memberIdsRef.current.includes(s.from_user)) dispatchSignal(s)
+          else heldRef.current.push({ s, at: Date.now() })
+        }
+      })
 
     return () => {
       supabase.removeChannel(channel)
@@ -189,5 +272,5 @@ export function useWebRTC(roomId: string, userId: string, cameraOn: boolean, mem
     }
   }, [roomId, userId])
 
-  return { localStream, remoteStreams }
+  return { localStream, remoteStreams, relayStatus }
 }

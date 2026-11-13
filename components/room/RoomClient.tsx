@@ -15,10 +15,19 @@ import { translations, type Lang } from '@/lib/i18n'
 import TimelineCalendar from './TimelineCalendar'
 import RankingPanel from './RankingPanel'
 import ThemeToggle from '@/components/ThemeToggle'
+import ProfileEditModal from '@/components/profile/ProfileEditModal'
+import ProfileCard from '@/components/profile/ProfileCard'
+import PinDialog from '@/components/room/PinDialog'
+import { WORD_FILTERS } from '@/lib/wordFilter'
 import AmbiencePanel from './AmbiencePanel'
+import LibraryBackdrop from './LibraryBackdrop'
+import ShareCard from './ShareCard'
+import PushOptIn from '@/components/push/PushOptIn'
+import { track, minutesBucket } from '@/lib/analytics'
+import StudyTogether, { BlockedList, describeFriend, FriendPresence, ChatBubbleContent, InviteBanner, parseInvite } from './StudyTogether'
 import { useAmbience } from '@/hooks/useAmbience'
 import { Icon, PlayIcon, PauseIcon, type IconName } from './Icons'
-import { usePresence } from '@/hooks/usePresence'
+import { usePresence, presenceRoomKey } from '@/hooks/usePresence'
 import { useStudyTracker } from '@/hooks/useStudyTracker'
 import type { MyStats } from '@/lib/studyTime'
 import type { Profile, Room, RoomMember, Task, Friendship } from '@/lib/supabase/types'
@@ -32,6 +41,8 @@ type Props = {
   initialFriends: (Friendship & { profiles: Profile })[]
   initialTasks: Task[]
   initialStats: MyStats
+  myPrivateRooms: Room[]
+  roomOwner?: { id: string; display_name: string } | null
 }
 
 const SUBJECTS = ['数学','英語','国語','理科','社会','物理','化学','生物','歴史','地理','プログラミング','英会話','資格勉強','その他']
@@ -50,13 +61,25 @@ const BGM_TRACKS = [
   { id: 'piano',  name: 'ピアノ',            icon: '🎵', type: 'piano' },
   { id: 'focus',  name: '集中ホワイトノイズ', icon: '🔊', type: 'white' },
 ]
-const WORD_FILTERS = [
-  '死ね', 'バカ', 'アホ', 'きもい', 'うざい', '消えろ', 'クソ', 'ばか', 'あほ', 'ゴミ', 'カス',
-  'えっち', 'エッチ', 'セックス', 'チンコ', 'マンコ', 'おっぱい', 'ちんちん', 'おちんちん',
-  'ヌード', '裸', 'えろ', 'エロ', '18禁', 'アダルト',
-  'キモい', 'デブ', 'ブス', 'キショい',
-]
-const SEAT_COLORS = ['#6c8aff','#a78bfa','#34d399','#f59e0b','#f87171','#fbbf24','#60a5fa','#fb7185','#4ade80','#facc15']
+// チャットの話しかけヒント（まだやり取りが少ないときに出す。勉強の話題だけ）
+const CHAT_HINTS_JA = ['マッチありがとう！何の勉強してる？', '一緒に25分やろう！', 'おつかれさま！今日は何時間やった？', '目標は何ですか？📚', 'いつも何時ごろ勉強してる？']
+const CHAT_HINTS_EN = ['Thanks for the match! What are you studying?', "Let's do 25 minutes together!", 'Nice work today!', "What's your goal?"]
+// 映像を同時につなぐ最大人数（入室は何人でもできる）
+const MAX_VIDEO_PEERS = 8
+/** きょうのとなりの席：自分と相手の ID・日付（JST）から決まる数で、いちばん小さい人。日ごとに変わる */
+function pickNeighbor(me: string, others: string[]): string | null {
+  if (others.length === 0) return null
+  const day = Math.floor((Date.now() + 9 * 3_600_000) / 86_400_000)
+  const score = (id: string) => {
+    const key = (me < id ? me + id : id + me) + day
+    let h = 2166136261
+    for (let i = 0; i < key.length; i++) { h ^= key.charCodeAt(i); h = Math.imul(h, 16777619) }
+    return h >>> 0
+  }
+  return others.reduce((best, id) => score(id) < score(best) ? id : best, others[0])
+}
+
+const SEAT_COLORS = ['var(--accent)','#a78bfa','#34d399','#f59e0b','#f87171','#fbbf24','#60a5fa','#fb7185','#4ade80','#facc15']
 type PanelId = 'timer' | 'tasks' | 'music' | 'stats' | 'ranking' | 'friends' | 'schedule' | 'rooms' | 'activity' | 'safety'
 const DOCK_PANELS: { id: PanelId; icon: IconName; ja: string; en: string }[] = [
   { id: 'timer',    icon: 'timer', ja: 'タイマー', en: 'Timer' },
@@ -71,16 +94,40 @@ const DOCK_PANELS: { id: PanelId; icon: IconName; ja: string; en: string }[] = [
   { id: 'safety',   icon: 'shield', ja: '安全設定', en: 'Safety' },
 ]
 
-export default function RoomClient({ profile, room, allRooms, initialMembers, initialFriends, initialTasks, initialStats }: Props) {
+export default function RoomClient({ profile, room, allRooms, initialMembers, initialFriends, initialTasks, initialStats, myPrivateRooms = [], roomOwner = null }: Props) {
   const router = useRouter()
   const supabase = createClient()
 
   // ── Core hooks ──
+  // ポモドーロ完了時：1 日 1 回だけ「今日の記録カード」を自動で開く（シェアのきっかけ）
+  const [shareSignal, setShareSignal] = useState(0)
+  const [ownerTipClosed, setOwnerTipClosed] = useState(false)
+  const [pushCardClosed, setPushCardClosed] = useState(false)
+  // 初めて部屋に入った・招待から入った、を計測（個人は特定しない）
+  useEffect(() => {
+    try { if (!localStorage.getItem('jr_first_room')) { localStorage.setItem('jr_first_room', '1'); track('first_room_enter') } } catch {}
+    if (room.is_private && room.created_by !== profile.id) track('invite_accept')
+  }, [])
   const timer = useTimer(() => {
-    showToast('🍅 ポモドーロ完了！お疲れさまでした')
-    addNotif('🍅', 'ポモドーロを完了しました！')
+    showToast(tr('🍅 ポモドーロ完了！お疲れさまでした', '🍅 Pomodoro done! Nice work'))
+    addNotif('🍅', tr('ポモドーロを完了しました！', 'Completed a pomodoro!'))
     markPomodoro()
+    track('pomodoro_complete')
+    try {
+      const key = 'shareCardShown:' + new Date().toISOString().slice(0, 10)
+      if (!localStorage.getItem(key)) { localStorage.setItem(key, '1'); setShareSignal(Date.now()) }
+    } catch {}
   })
+  // ロビーの「今すぐはじめる」から来たら、タイマーを自動で開始する（?start=1）
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('start') !== '1') return
+    params.delete('start')
+    window.history.replaceState(null, '', window.location.pathname + (params.toString() ? '?' + params : ''))
+    if (!timer.running) timer.toggle()
+    track('timer_start')
+    showToast(tr('▶ タイマーを始めました。カメラは OFF のままで大丈夫です', '▶ Timer started. You can keep your camera off'))
+  }, [])
   const [cameraOn, setCameraOn] = useState(false)
 
   // ── Face detection ──
@@ -92,19 +139,31 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
     cameraOn && faceDetectEnabled,
     () => {
       showToast(T.faceWarning)
-      addNotif('😴', '顔が検出されませんでした')
+      addNotif('😴', tr('顔が検出されませんでした', 'No face detected'))
     },
     noFaceThreshold
   )
   const { members, updateStatus } = useRoomRealtime(room.id, profile.id)
   const rawMembers = members.length > 0 ? members : initialMembers
-  const { friends, pendingIn, unreadCounts, blockUser, reportUser, acceptFriendRequest, sendFriendRequest, newFriendRequest, setNewFriendRequest } = useFriends(profile.id)
-  const displayFriends = friends.length > 0 ? friends : initialFriends
+  const { friends, friendsLoaded, pendingIn, unreadCounts, blockUser, unblockUser, blocked, reportUser, acceptFriendRequest, declineFriendRequest, removeFriend, sendFriendRequest, newFriendRequest, setNewFriendRequest } = useFriends(profile.id)
+  const blockedIds = new Set(blocked.map(b => b.id))
+  const displayFriends = friendsLoaded ? friends : initialFriends
   const {
     dailyMessages, myMessage, reactions, showPinnedOnly, setShowPinnedOnly,
-    mutualPinNotif, pinnedUserIds, REACTION_EMOJIS,
+    mutualPinNotif, pinnedUserIds, matchedIds, getMyPin, pinFrom, REACTION_EMOJIS,
     sendReaction, togglePin, saveDailyMessage, isPinned, getReactionsFor,
   } = useInteractions(profile.id, room.id)
+  // ピンの画面（理由・ひみつ）
+  const [pinTarget, setPinTarget] = useState<{ userId: string; name: string } | null>(null)
+  async function onPinClick(userId: string, name: string) {
+    if (isPinned(userId)) {
+      if (!window.confirm(lang==='ja' ? `${name}さんのピンを外しますか？` : `Unpin ${name}?`)) return
+      const r = await togglePin(userId)
+      if (r.error) showToast('❌ ' + r.error)
+      return
+    }
+    setPinTarget({ userId, name })
+  }
 
   // ── Stats ──
   const [todaySeconds, setTodaySeconds] = useState(initialStats.todaySeconds)
@@ -151,23 +210,28 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
   const [panel, setPanel] = useState<PanelId | null>(null)
   const [zen, setZen] = useState(false)
   const [showProfileEdit, setShowProfileEdit] = useState(false)
-  const [editName, setEditName] = useState(profile.display_name)
-  const [savingName, setSavingName] = useState(false)
+  const [, setProfileVersion] = useState(0)   // プロフィール保存後に再描画するため
+  const [viewUserId, setViewUserId] = useState<string | null>(null)
 
   // ── Language ──
   const [lang, setLang] = useState<Lang>('ja')
   useEffect(() => {
-    const saved = localStorage.getItem('lang') as Lang
+    let saved: string | null = null
+    try { saved = localStorage.getItem('lang') } catch {}
     if (saved === 'ja' || saved === 'en') setLang(saved)
   }, [])
+  // 画面の言語をブラウザ・読み上げソフトにも伝える
+  useEffect(() => { document.documentElement.lang = lang }, [lang])
   const T = translations[lang]
+  // 日本語・英語の切り替え（翻訳辞書にない短い文言用）
+  const tr = (ja: string, en: string) => (lang === 'ja' ? ja : en)
   const toggleLang = () => {
     const next: Lang = lang === 'ja' ? 'en' : 'ja'
     setLang(next)
-    localStorage.setItem('lang', next)
+    try { localStorage.setItem('lang', next) } catch {}
   }
-  const [activeMobScreen, setActiveMobScreen] = useState<'timer' | 'room' | 'friends' | 'stats'>('timer')
-  const [notifications, setNotifications] = useState([{ icon: '🏠', text: `「${room.name}」に入室しました`, time: 'たった今' }])
+  const [activeMobScreen, setActiveMobScreen] = useState<'timer' | 'room' | 'friends' | 'stats'>('room')
+  const [notifications, setNotifications] = useState([{ icon: '🏠', text: `「${room.name}」`, at: Date.now() }])
   const [bgmPlaying, setBgmPlaying] = useState<string | null>(null)
   const ambience = useAmbience()
   const [volume, setVolume] = useState(0.4)
@@ -220,25 +284,85 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
     setTodaySeconds(s.todaySeconds); setPomosToday(s.pomosToday); setStreak(s.streak)
     setWeeklyStats(s.week); setRankRefresh(k => k + 1)
   })
-  const presence = usePresence(profile.id, room.id, isFocusing)
+  const presence = usePresence(profile.id, room.id, isFocusing, !!room.is_private, room.invite_code)
+  // フレンドの居場所表示用：自分が見られる部屋（公開ルーム＋入室権のあるプライベートルーム）
+  // プライベートルームは presence 上ではハッシュなので、自分が入れる部屋のハッシュを計算して対応づける
+  const [privateKeyMap, setPrivateKeyMap] = useState<[string, Room][]>([])
+  useEffect(() => {
+    let alive = true
+    const list = [...myPrivateRooms, ...(room.is_private ? [room] : [])]
+    Promise.all(list.map(async r => [await presenceRoomKey(r.id, true, r.invite_code), r] as [string, Room]))
+      .then(pairs => { if (alive) setPrivateKeyMap(pairs) })
+    return () => { alive = false }
+  }, [room.id, myPrivateRooms.map(r => r.id).join(',')])
+  const myRoomKey = privateKeyMap.find(([, r]) => r.id === room.id)?.[0] ?? room.id
+  const roomsById = new Map<string, Room>([...allRooms.map(r => [r.id, r] as [string, Room]), ...privateKeyMap, [myRoomKey, room]])
+  const friendStatus = (friendId: string) => describeFriend(friendId, presence.whereIs, roomsById, myRoomKey, lang)
+  // フレンドからの招待（チャットで届いた部屋リンク）をお知らせ
+  const [incomingInvite, setIncomingInvite] = useState<{ fromName: string; text: string; path: string } | null>(null)
   // Presence 同期後は、実際に接続している人だけを表示（閉じ忘れの幽霊メンバーを除外）
   const displayMembers = presence.synced
     ? rawMembers.filter((m: any) => presence.roomUserIds.has(m.user_id))
     : rawMembers
-  const { localStream, remoteStreams } = useWebRTC(room.id, profile.id, cameraOn,
-    displayMembers.map((m: any) => m.user_id).filter((id: string) => id !== profile.id))
+  // ブロックした相手は表示せず、カメラもつながない（DB 側でも通信を拒否している）
+  const visibleMembers = displayMembers.filter((m: any) => !blockedIds.has(m.user_id))
+  // きょうのとなりの席：二人の組み合わせと日付（JST）で決まる。毎日変わる
+  const neighborId = pickNeighbor(profile.id, visibleMembers.map((m: any) => m.user_id).filter((id: string) => id !== profile.id))
+  // 同じ目標の人（プロフィールの goal_exam）
+  const [memberGoals, setMemberGoals] = useState<Record<string, string | null>>({})
+  const memberIdsKey = visibleMembers.map((m: any) => m.user_id).sort().join(',')
+  useEffect(() => {
+    const ids = memberIdsKey.split(',').filter(id => id && !(id in memberGoals))
+    if (ids.length === 0) return
+    ;(supabase as any).from('profiles').select('id, goal_exam').in('id', ids.slice(0, 100))
+      .then(({ data, error }: { data: { id: string; goal_exam: string | null }[] | null; error: unknown }) => {
+        if (error || !data) return
+        setMemberGoals(prev => ({ ...prev, ...Object.fromEntries(data.map(d => [d.id, d.goal_exam])) }))
+      })
+  }, [memberIdsKey])
+  const myGoal = memberGoals[profile.id] ?? (profile as any).goal_exam ?? null
+  /** 並び順：ペア（マッチ）→ となりの席 → ピン → フレンド → カメラ ON → 入室順 */
+  const seatRank = (m: any) => matchedIds.has(m.user_id) ? 0 : m.user_id === neighborId ? 1 : isPinned(m.user_id) ? 2
+    : displayFriends.some((f: any) => f.addressee_id === m.user_id) ? 3 : m.camera_on ? 4 : 5
+  const orderedMembers = [...visibleMembers].sort((a: any, b: any) => seatRank(a) - seatRank(b))
+  // 映像を同時につなぐのは近くの席の 8 人まで（何人でも入室できる。全員と映像をつなぐと端末が重くなるため）
+  const videoPeerIds = orderedMembers.map((m: any) => m.user_id).filter((id: string) => id !== profile.id).slice(0, MAX_VIDEO_PEERS)
+  const { localStream, remoteStreams, relayStatus } = useWebRTC(room.id, profile.id, cameraOn, videoPeerIds)
   useEffect(() => { updateStatus(timer.mode === 'short' || timer.mode === 'long' ? 'break' : 'studying', currentTask, cameraOn) }, [cameraOn, timer.mode, currentTask])
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [chatMessages])
+  const friendsRef = useRef(displayFriends)
+  friendsRef.current = displayFriends
+  useEffect(() => {
+    const ch = (supabase as any).channel(`invites:${profile.id}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `receiver_id=eq.${profile.id}` }, (payload: any) => {
+        const inv = parseInvite(payload.new?.content ?? '')
+        if (!inv || inv.path === `/room/${room.id}` || (room.invite_code && inv.path === `/invite/${room.invite_code}`)) return
+        const f = friendsRef.current.find((x: any) => x.addressee_id === payload.new.sender_id)
+        if (!f) return // フレンド以外からの招待は表示しない
+        const fromName = (f.profiles as Profile | undefined)?.display_name ?? (lang==='ja'?'フレンド':'A friend')
+        setIncomingInvite({ fromName, text: inv.text, path: inv.path })
+        addNotif('📨', lang==='ja'?`${fromName}さんから招待が届きました`:`${fromName} invited you`)
+      })
+      .subscribe()
+    return () => { (supabase as any).removeChannel(ch) }
+  }, [profile.id, room.id])
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
-      if (zen) setZen(false)
+      // 開いているダイアログがあれば、まずそれを閉じる
+      if (blockModal) setBlockModal(null)
+      else if (reportModal) setReportModal(null)
+      else if (reactionTarget) setReactionTarget(null)
+      else if (showCustomTimer) setShowCustomTimer(false)
+      else if (showScheduler) setShowScheduler(false)
+      else if (viewUserId) setViewUserId(null)
+      else if (zen) setZen(false)
       else if (chatFriendId) setChatFriendId(null)
       else setPanel(null)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [zen, chatFriendId])
+  }, [zen, chatFriendId, blockModal, reportModal, reactionTarget, showCustomTimer, showScheduler, viewUserId])
 
   // Live study counter
   useEffect(() => {
@@ -272,6 +396,16 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
       .eq('user_id', profile.id)
 
     let allData: any[] = data || []
+    // 招待された部屋（入室権のあるプライベートルーム）の予約も表示する
+    const accessibleRoomIds = myPrivateRooms.map(r => r.id)
+    if (accessibleRoomIds.length > 0) {
+      const { data: roomSessions } = await supa.from('scheduled_sessions')
+        .select('id, title, scheduled_at, subject, host_id, duration_mins, room_id')
+        .in('room_id', accessibleRoomIds)
+        .gte('scheduled_at', new Date(Date.now() - 24*60*60*1000).toISOString())
+      const ids = new Set(allData.map((s: any) => s.id))
+      ;(roomSessions ?? []).forEach((s: any) => { if (!ids.has(s.id)) allData.push(s) })
+    }
     if (myParticipations && myParticipations.length > 0) {
       const participatedIds = myParticipations.map((p: any) => p.session_id)
       const { data: partSessions } = await supa.from('scheduled_sessions')
@@ -321,14 +455,14 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
 
   function triggerAway() {
     setAwayModal(true); setAwayCountdown(60); updateStatus('away')
-    addNotif('⚠️', '席を外していると検出されました')
+    addNotif('⚠️', tr('席を外していると検出されました', 'You seem to be away'))
     let cnt = 60
     awayCountRef.current = setInterval(() => {
       cnt--; setAwayCountdown(cnt)
       if (cnt <= 0) {
         clearInterval(awayCountRef.current!); setAwayModal(false)
         if (timer.running) timer.toggle()
-        showToast('⏸ 長時間席を外したためタイマーを停止しました')
+        showToast(tr('⏸ 長時間席を外したためタイマーを停止しました', '⏸ Timer paused because you were away'))
       }
     }, 1000)
   }
@@ -336,18 +470,66 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
   function dismissAway() {
     if (awayCountRef.current) clearInterval(awayCountRef.current)
     setAwayModal(false); updateStatus('studying', currentTask, cameraOn)
-    lastActivityRef.current = Date.now(); showToast('📚 おかえりなさい！')
+    lastActivityRef.current = Date.now(); showToast(tr('📚 おかえりなさい！', '📚 Welcome back!'))
   }
 
-  async function saveDisplayName() {
-    if (!editName.trim()) return
-    setSavingName(true)
-    await (supabase as any).from('profiles').update({ display_name: editName.trim() }).eq('id', profile.id)
-    profile.display_name = editName.trim()
-    setSavingName(false)
-    setShowProfileEdit(false)
-    showToast(lang==='ja'?'✅ 名前を変更しました':'✅ Name updated!')
+  function onProfileSaved(p: { display_name: string; avatar_url: string | null; bio?: string | null }) {
+    Object.assign(profile, p)
+    setProfileVersion(v => v + 1)
+    showToast(lang==='ja'?'プロフィールを保存しました':'Profile saved')
   }
+
+  async function requestFriend(userId: string, name: string) {
+    // 相手からすでに申請が届いていれば、そのまま承認してフレンドになる
+    const incoming = pendingIn.find((r: any) => r.requester_id === userId)
+    if (incoming) {
+      const ok = await acceptFriendRequest(incoming.id)
+      showToast(ok ? (lang==='ja'?`✅ ${name}さんとフレンドになりました`:`✅ Now friends with ${name}`) : (lang==='ja'?'❌ 承認できませんでした':'❌ Could not accept'))
+      return
+    }
+    const result = await sendFriendRequest(userId)
+    if (result === 'sent') {
+      showToast(lang==='ja'?`👋 ${name}さんにフレンド申請しました！`:`👋 Friend request sent to ${name}!`)
+      addNotif('👋', lang==='ja'?`${name}さんにフレンド申請しました`:`Friend request sent to ${name}`)
+    } else if (result === 'accepted') {
+      showToast(lang==='ja'?'すでにフレンドです':'Already friends')
+    } else if (result === 'pending') {
+      showToast(lang==='ja'?'申請済みです。相手の承認を待っています':'Request already sent')
+    } else {
+      showToast(lang==='ja'?'❌ 申請できませんでした（時間をおいて試してください）':'❌ Could not send request')
+    }
+  }
+  async function acceptRequest(friendshipId: string, name: string) {
+    const ok = await acceptFriendRequest(friendshipId)
+    showToast(ok ? (lang==='ja'?`✅ ${name}さんとフレンドになりました`:`✅ Now friends with ${name}`) : (lang==='ja'?'❌ 承認できませんでした':'❌ Could not accept'))
+  }
+  async function declineRequest(friendshipId: string) {
+    const ok = await declineFriendRequest(friendshipId)
+    showToast(ok ? (lang==='ja'?'申請を見送りました（相手には通知されません）':'Request declined') : (lang==='ja'?'❌ 操作できませんでした':'❌ Failed'))
+  }
+  async function unfriend(userId: string, name: string) {
+    if (!window.confirm(lang==='ja'?`${name}さんとのフレンドを解除しますか？（相手には通知されません）`:`Remove ${name} from friends?`)) return
+    const ok = await removeFriend(userId)
+    if (ok && chatFriendId === userId) setChatFriendId(null)
+    showToast(ok ? (lang==='ja'?`${name}さんとのフレンドを解除しました`:`Removed ${name}`) : (lang==='ja'?'❌ 解除できませんでした':'❌ Failed'))
+  }
+
+  async function inviteFriend(friendId: string, name: string) {
+    const res = await fetch('/api/room/invite', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roomId: room.id, friendId }) })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) { showToast('❌ ' + (data.error ?? (lang==='ja'?'招待を送れませんでした':'Could not send invite'))); throw new Error('invite failed') }
+    showToast(lang==='ja'?`📨 ${name}さんを招待しました`:`📨 Invited ${name}`)
+    addNotif('📨', lang==='ja'?`${name}さんを「${room.name}」に招待しました`:`Invited ${name} to "${room.name}"`)
+  }
+  async function askInvite(friendId: string, name: string) {
+    const { error } = await (supabase as any).from('messages').insert({
+      sender_id: profile.id, receiver_id: friendId,
+      content: lang==='ja' ? '🙋 一緒に勉強したいです！今いる部屋に招待してもらえますか？' : '🙋 Can I join you? Please invite me to your room!',
+    })
+    if (error) { showToast(lang==='ja'?'❌ 送れませんでした':'❌ Could not send'); throw error }
+    showToast(lang==='ja'?`🙋 ${name}さんにお願いを送りました`:`🙋 Asked ${name}`)
+  }
+  function joinFriendRoom(roomId: string) { router.push(`/room/${roomId}`) }
 
   async function addTask(title: string) {
     const { data } = await (supabase as any).from('tasks').insert({ user_id: profile.id, title, is_shared: false, share_scope: 'private' }).select().single()
@@ -368,7 +550,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
   async function completeTask(task: Task) {
     await (supabase as any).from('tasks').update({ completed: true, completed_at: new Date().toISOString() }).eq('id', task.id)
     setTasks(prev => prev.filter((t: any) => t.id !== task.id))
-    setTasksDoneToday(n => n + 1); addNotif('✅', `「${task.title}」を完了`)
+    setTasksDoneToday(n => n + 1); addNotif('✅', tr(`「${task.title}」を完了`, `Completed "${task.title}"`))
   }
   async function deleteTask(taskId: string) {
     await (supabase as any).from('tasks').delete().eq('id', taskId)
@@ -378,48 +560,36 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
     setMySubject(s); setShowSubjectPicker(false)
     await (supabase as any).rpc('update_subject', { p_subject: s })
     await (supabase as any).from('room_members').update({ current_task: s }).eq('room_id', room.id).eq('user_id', profile.id)
-    addNotif('🎯', `科目を「${s}」に設定しました`)
+    addNotif('🎯', tr(`科目を「${s}」に設定しました`, `Subject set to "${s}"`))
   }
   async function scheduleSession() {
-    if (!schedTitle) { showToast('❌ タイトルを入力してください'); return }
-    if (!schedDate) { showToast('❌ 日付を選択してください'); return }
-    if (!schedTime) { showToast('❌ 時刻を選択してください'); return }
-    const dt = new Date(`${schedDate}T${schedTime}`)
-
-    // 専用プライベートルームを自動作成
-    const inviteCode = Math.random().toString(36).slice(2, 10).toUpperCase()
-    const { data: privateRoom } = await (supabase as any).from('rooms').insert({
-      name: schedTitle,
-      description: `${profile.display_name}さんのセッション · ${schedDuration}分`,
-      emoji: '🔒',
-      category: mySubject || 'general',
-      is_private: true,
-      invite_code: inviteCode,
-      created_by: profile.id,
-    }).select().single()
-
-    if (!privateRoom) { showToast('❌ ルーム作成に失敗しました'); return }
-
-    // セッションをプライベートルームに紐付け
-    const { data: session } = await (supabase as any).from('scheduled_sessions').insert({
-      host_id: profile.id,
-      room_id: privateRoom.id,
-      title: schedTitle,
-      subject: mySubject || null,
-      scheduled_at: dt.toISOString(),
-      duration_mins: schedDuration,
-    }).select().single()
-
-    // ホスト自身を参加者に追加
-    if (session) {
-      await (supabase as any).from('session_participants').insert({
-        session_id: session.id, user_id: profile.id
-      })
+    if (!schedTitle) { showToast(tr('❌ タイトルを入力してください', '❌ Enter a title')); return }
+    if (!schedDate) { showToast(tr('❌ 日付を選択してください', '❌ Choose a date')); return }
+    if (!schedTime) { showToast(tr('❌ 時刻を選択してください', '❌ Choose a time')); return }
+    // 勉強会はこの部屋で開く（新しい部屋は作らない）。くり返し・招待はロビーの「友達との勉強会」から
+    const res = await fetch('/api/study-group', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: schedTitle, date: schedDate, time: schedTime, durationMins: schedDuration, repeatDays: [], roomId: room.id }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      showToast('❌ ' + (data.error ?? tr('予約できませんでした', 'Could not schedule')))
+      if (data.upgrade) router.push('/premium')
+      return
     }
-
     setShowScheduler(false); setSchedTitle(''); fetchSessions()
-    addNotif('📅', `セッション「${schedTitle}」を予約しました`)
-    showToast('📅 予約完了！参加者には招待リンクを共有してください')
+    addNotif('📅', tr(`勉強会「${schedTitle}」を予約しました`, `Scheduled "${schedTitle}"`))
+    showToast(tr('📅 予約しました！友達の招待やくり返しはロビーの「友達との勉強会」からできます', '📅 Scheduled! Invite friends from the lobby'))
+  }
+  async function copySessionInvite(code: string) {
+    const url = `${window.location.origin}/invite/${code}`
+    try { await navigator.clipboard.writeText(url); return true } catch { return false }
+  }
+  async function copySessionInviteByRoom(roomId: string) {
+    const { data } = await (supabase as any).from('rooms').select('invite_code').eq('id', roomId).maybeSingle()
+    if (!data?.invite_code) { showToast(tr('❌ 招待リンクを取得できませんでした', '❌ Could not get the invite link')); return }
+    if (await copySessionInvite(data.invite_code)) showToast(tr('🔗 招待リンクをコピーしました', '🔗 Invite link copied'))
+    else window.prompt(tr('このリンクをコピーしてください', 'Copy this link'), `${window.location.origin}/invite/${data.invite_code}`)
   }
   async function joinSession(sessionId: string) {
     await (supabase as any).from('session_participants').upsert(
@@ -427,8 +597,8 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
       { onConflict: 'session_id,user_id' }
     )
     fetchSessions()
-    showToast('✅ 参加登録しました！開始時刻になると入室できます')
-    addNotif('✋', 'セッションに参加登録しました')
+    showToast(tr('✅ 参加登録しました！開始時刻になると入室できます', '✅ Registered! You can enter when it starts'))
+    addNotif('✋', tr('セッションに参加登録しました', 'Registered for a session'))
   }
 
   // ── BGM ──
@@ -547,7 +717,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
   async function playBgm(id: string) {
     stopBgmNodes()
     const started = await initAudio()
-    if (!started) { showToast('🔇 音声を開始できませんでした。もう一度クリックしてください'); return }
+    if (!started) { showToast(tr('🔇 音声を開始できませんでした。もう一度クリックしてください', '🔇 Could not start audio. Click again')); return }
     const ctx = bgmCtxRef.current!; const gain = bgmGainRef.current!
     const track = BGM_TRACKS.find((t: any) => t.id === id)!
     const type = (track as any).type
@@ -583,31 +753,66 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
     } else {
       makeNoise(ctx, gain, 'white')
     }
-    setBgmPlaying(id); addNotif('🎵', `BGM「${(track as any).name}」を再生中`)
+    setBgmPlaying(id); addNotif('🎵', tr(`BGM「${(track as any).name}」を再生中`, `Playing "${(track as any).name}"`))
   }
   function toggleBgm(id: string) { if (bgmPlaying === id) { stopBgmNodes(); setBgmPlaying(null) } else { playBgm(id) } }
 
   function togglePanel(id: PanelId) { setChatFriendId(null); setPanel(p => p === id ? null : id) }
   function openChat(friendId: string) { setPanel('friends'); setChatFriendId(friendId) }
   async function leaveRoom() {
+    track('session_end', { minutes_bucket: minutesBucket(Math.floor(todaySeconds / 60)) })
+    // タイマーが動いている間は、押し間違いで退室しないよう確認する
+    if (timer.running && !window.confirm(lang==='ja'?'タイマーが動いています。退室しますか？':'The timer is running. Leave the room?')) return
     await fetch('/api/room/leave', { method: 'POST', body: JSON.stringify({ roomId: room.id }) }).catch(() => {})
     router.push('/lobby')
   }
 
-  function addNotif(icon: string, text: string) { setNotifications(prev => [{ icon, text, time: 'たった今' }, ...prev].slice(0, 10)) }
+  function addNotif(icon: string, text: string) { setNotifications(prev => [{ icon, text, at: Date.now() }, ...prev].slice(0, 20)) }
+  // 「3分前」のような相対時刻（currentTime が毎分変わるので自動で更新される）
+  const ago = (at: number) => {
+    const m = Math.floor((Date.now() - at) / 60000)
+    if (m < 1) return lang==='ja' ? 'たった今' : 'just now'
+    if (m < 60) return lang==='ja' ? `${m}分前` : `${m}m ago`
+    const h = Math.floor(m / 60)
+    return lang==='ja' ? `${h}時間前` : `${h}h ago`
+  }
+  const notificationsView = notifications.map(n => ({ ...n, time: ago(n.at) }))
   function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(null), 3000) }
   async function handleBlock(userId: string, name: string) {
-    await blockUser(userId); setBlockModal(null)
-    addNotif('🚫', `「${name}」をブロックしました`); showToast(`🚫 ${name} をブロックしました`)
+    const ok = await blockUser(userId); setBlockModal(null)
+    if (!ok) { showToast(lang==='ja'?'❌ ブロックできませんでした':'❌ Could not block'); return }
+    if (chatFriendId === userId) setChatFriendId(null)
+    if (viewUserId === userId) setViewUserId(null)
+    addNotif('🚫', lang==='ja'?`「${name}」をブロックしました`:`Blocked ${name}`)
+    showToast(lang==='ja'?`🚫 ${name}さんをブロックしました。お互いに表示・連絡できなくなります`:`🚫 Blocked ${name}`)
+  }
+  async function handleUnblock(userId: string, name: string) {
+    if (!(await unblockUser(userId))) { showToast(lang==='ja'?'❌ 解除できませんでした':'❌ Could not unblock'); return }
+    showToast(lang==='ja'?`${name}さんのブロックを解除しました`:`Unblocked ${name}`)
+  }
+  // 一緒に勉強しよう：フレンドならペア申請、まだならフレンド申請
+  async function studyTogetherWith(userId: string, name: string) {
+    const isFriendNow = displayFriends.some((f: any) => f.addressee_id === userId)
+    if (!isFriendNow) { await requestFriend(userId, name); return }
+    const { error } = await (supabase as any).rpc('request_study_pair', { partner_id: userId })
+    if (error) { showToast(lang==='ja'?'❌ 申請できませんでした':'❌ Could not send'); return }
+    await (supabase as any).from('messages').insert({
+      sender_id: profile.id, receiver_id: userId,
+      content: lang==='ja' ? '🤝 一緒に勉強しよう！タスクパネルの「一緒に勉強中」から承認してね' : '🤝 Let\'s study together! Accept it from the Tasks panel.',
+    })
+    showToast(lang==='ja'?`🤝 ${name}さんに一緒に勉強しよう申請を送りました`:`🤝 Sent a study-together request to ${name}`)
   }
   async function handleReport(userId: string, reason: string) {
-    await reportUser(userId, reason); setReportModal(null); showToast('📢 報告を送信しました')
+    await reportUser(userId, reason); setReportModal(null); showToast(tr('📢 報告を送信しました', '📢 Report sent'))
   }
   async function handleSendMsg() {
     if (!chatInput.trim() || !chatFriendId) return
     const hasNG = WORD_FILTERS.some(w => chatInput.includes(w))
     if (hasNG) { showToast(T.badWord); return }
-    await sendMessage(chatInput.trim()); setChatInput('')
+    const sent = await sendMessage(chatInput.trim())
+    // 送れなかったときは入力を残して知らせる（フレンド解除・ブロック・送りすぎなど）
+    if (!sent) { showToast(lang==='ja'?'❌ 送信できませんでした。少し待ってからもう一度お試しください':'❌ Message not sent'); return }
+    setChatInput('')
   }
 
   const fmtTime = (s: number) => `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`
@@ -617,7 +822,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
     return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
   }
 
-  const weekDays = ['日',lang==='ja'?'月':'Month','火','水','木','金','土']
+  const weekDays = lang==='ja' ? ['日','月','火','水','木','金','土'] : ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
   const weekDataMap: Record<number,number> = {}
   weeklyStats.forEach((d: any) => { weekDataMap[d.day_of_week] = Number(d.total_seconds) })
   const maxWeek = Math.max(...Object.values(weekDataMap), 3600)
@@ -627,87 +832,120 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
   const chatFriendProfile = chatFriend?.profiles as Profile | undefined
   const friendsForTaskPanel = displayFriends.map((f: any) => ({ id: f.addressee_id, display_name: (f.profiles as Profile).display_name, avatar_url: (f.profiles as Profile).avatar_url }))
 
-  const filteredMembers = displayMembers.filter((m: any) => m.user_id !== profile.id && (!showPinnedFilter || pinnedUserIds.includes(m.user_id)))
+  const filteredMembers = orderedMembers.filter((m: any) => m.user_id !== profile.id && (!showPinnedFilter || pinnedUserIds.includes(m.user_id)))
   const tileCount = filteredMembers.length + 1 + (!showPinnedFilter && filteredMembers.length < 3 ? 1 : 0)
   const gridCols = tileCount <= 1 ? 1 : tileCount <= 4 ? 2 : tileCount <= 9 ? 3 : 4
   const studyingCount = displayMembers.filter((m: any) => m.status === 'studying').length
   const myStatus: 'studying' | 'break' | 'away' = awayModal ? 'away' : timer.mode === 'short' || timer.mode === 'long' ? 'break' : 'studying'
   const statusLabel = (st: string) => st === 'studying' ? (lang==='ja'?'集中中':'Focusing') : st === 'break' ? (lang==='ja'?'休憩中':'Break') : (lang==='ja'?'離席中':'Away')
-  const timerModeLabel = timer.mode==='focus'?'集中モード':timer.mode==='short'?'小休憩':timer.mode==='long'?'長休憩':'カスタム'
+  const timerModeLabel = timer.mode==='focus'?tr('集中モード','Focus'):timer.mode==='short'?tr('小休憩','Short break'):timer.mode==='long'?tr('長休憩','Long break'):tr('カスタム','Custom')
 
   return (
     <div className={styles.root}>
+      <LibraryBackdrop/>
 
       {/* AWAY MODAL */}
       {awayModal && (
         <div className={styles.awayModal}>
           <div className={styles.awayEmoji}>😴</div>
-          <div className={styles.awayTitle}>席を外していますか？</div>
-          <div className={styles.awayMsg}>しばらく動きが検出されていません。<br/>勉強を続けていますか？</div>
+          <div className={styles.awayTitle}>{tr('席を外していますか？','Are you still there?')}</div>
+          <div className={styles.awayMsg}>{tr('しばらく動きが検出されていません。','No activity detected for a while.')}<br/>{tr('勉強を続けていますか？','Are you still studying?')}</div>
           <div className={styles.awayCountdown}>{awayCountdown}</div>
-          <button className={styles.awayBackBtn} onClick={dismissAway}>📚 戻りました！</button>
+          <button className={styles.awayBackBtn} onClick={dismissAway}>📚 {tr('戻りました！',"I'm back!")}</button>
         </div>
+      )}
+
+      {pinTarget && (
+        <PinDialog name={pinTarget.name} lang={lang}
+          initial={(() => { const p = getMyPin(pinTarget.userId); return p ? { reason: p.reason, secret: p.is_secret } : null })()}
+          onClose={() => setPinTarget(null)}
+          onUpgrade={() => router.push('/premium')}
+          onSubmit={async (v) => {
+            const r = await togglePin(pinTarget.userId, { ...v, forceUpdate: true })
+            if (r.error) return { error: r.error, upgrade: r.upgrade }
+            setPinTarget(null)
+            if (!r.mutual) showToast(v.secret
+              ? (lang==='ja' ? '🤫 ひみつでピンしました。相手もピンしたら、二人に知らせます' : '🤫 Secret pin saved')
+              : (lang==='ja' ? `📌 ${pinTarget.name}さんをピンしました` : `📌 Pinned ${pinTarget.name}`))
+          }}/>
       )}
 
       {/* MUTUAL PIN NOTIFICATION */}
       {mutualPinNotif && (
-        <div className={styles.toast} style={{ background:'rgba(108,138,255,.95)', borderColor:'var(--accent2)', fontWeight:600, bottom:60 }}>
+        <div className={styles.toast} style={{ background:'rgba(125,149,255,.95)', borderColor:'var(--accent2)', fontWeight:600, bottom:60 }}>
           {mutualPinNotif}
         </div>
       )}
       {toast && <div className={styles.toast}>{toast}</div>}
+      {cameraOn && relayStatus === 'unavailable' && (
+        <div className={styles.relayNotice} role="status">
+          🔒 {lang==='ja'
+            ? 'あなたの IP アドレスを守るため、いまはカメラ映像を他の人に送っていません（中継サーバーの準備中）。自分の画面には表示されます。'
+            : 'To protect your IP address, your camera is not being shared right now (relay unavailable).'}
+        </div>
+      )}
+      {/* ポモドーロを終えたあとに「明日も通知する？」を出す（許可ダイアログはボタンを押したときだけ） */}
+      {shareSignal > 0 && !pushCardClosed && (
+        <div className={styles.pushWrap}><PushOptIn onDone={() => setPushCardClosed(true)} /></div>
+      )}
+      <ShareCard hideButton openSignal={shareSignal} lang={lang} displayName={profile.display_name} todaySeconds={todaySeconds} pomosToday={pomosToday} streak={streak} week={weeklyStats as any} onToast={showToast}/>
+      {/* 招待で入った友達部屋：作った人とまだフレンドでなければ、フレンド申請を案内する */}
+      {roomOwner && friendsLoaded && !ownerTipClosed
+        && !displayFriends.some((f: any) => f.addressee_id === roomOwner.id)
+        && !blockedIds.has(roomOwner.id) && (
+        <div className={styles.ownerTip} role="status">
+          <span>🤝 {lang==='ja' ? <><b>{roomOwner.display_name}</b>さんの部屋です。フレンドになると、勉強中かどうかが分かり、すぐ合流できます。</> : <>This is <b>{roomOwner.display_name}</b>'s room. Add them as a friend to see when they're studying.</>}</span>
+          <span className={styles.ownerTipBtns}>
+            <button onClick={() => setOwnerTipClosed(true)}>{lang==='ja'?'あとで':'Later'}</button>
+            <button className={styles.ownerTipPrimary} onClick={() => { requestFriend(roomOwner.id, roomOwner.display_name); setOwnerTipClosed(true) }}>{lang==='ja'?'フレンド申請':'Add friend'}</button>
+          </span>
+        </div>
+      )}
+      {incomingInvite && <InviteBanner {...incomingInvite} lang={lang} onClose={() => setIncomingInvite(null)}/>}
 
       {/* Profile Edit Modal */}
       {showProfileEdit && (
-        <div className={styles.overlay} onClick={() => setShowProfileEdit(false)}>
-          <div className={styles.modal} onClick={e => e.stopPropagation()}>
-            <h3>👤 {lang==='ja'?'プロフィール編集':'Edit Profile'}</h3>
-            <p style={{ fontSize:13, color:'var(--muted2)', marginBottom:16 }}>
-              {lang==='ja'?'表示名を変更できます':'Change your display name'}
-            </p>
-            <div style={{ marginBottom:16 }}>
-              <label style={{ fontSize:12, color:'var(--muted)', display:'block', marginBottom:6 }}>
-                {lang==='ja'?'表示名':'Display Name'}
-              </label>
-              <input
-                value={editName}
-                onChange={e => setEditName(e.target.value)}
-                maxLength={20}
-                placeholder={lang==='ja'?'表示名を入力...':'Enter display name...'}
-                style={{ width:'100%', padding:'10px 12px', background:'var(--bg3)',
-                  border:'1px solid var(--accent)', borderRadius:8, color:'var(--text)',
-                  fontSize:14, fontFamily:'inherit', outline:'none', boxSizing:'border-box' }}
-                onKeyDown={e => { if (e.key==='Enter') { saveDisplayName(); } }}
-                autoFocus
-              />
-              <div style={{ fontSize:11, color:'var(--muted)', marginTop:4, textAlign:'right' }}>
-                {editName.length}/20
-              </div>
-            </div>
-            <div className={styles.modalBtns}>
-              <button className={`${styles.mBtn} ${styles.ghost}`} onClick={() => setShowProfileEdit(false)}>
-                {lang==='ja'?'キャンセル':'Cancel'}
-              </button>
-              <button className={`${styles.mBtn} ${styles.primary}`}
-                onClick={saveDisplayName}
-                disabled={!editName.trim()}
-                style={{ background:'var(--accent)', color:'#fff', border:'none', opacity: editName.trim()?1:0.5 }}>
-                {lang==='ja'?'保存':'Save'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <ProfileEditModal profile={profile} lang={lang} onClose={() => setShowProfileEdit(false)} onSaved={onProfileSaved}/>
       )}
+
+      {/* 他の人のプロフィール */}
+      {viewUserId && (() => {
+        const m = displayMembers.find(x => x.user_id === viewUserId)
+        const name = (m?.profiles as any)?.display_name ?? ''
+        const isFriend = displayFriends.some((f:any) => f.addressee_id === viewUserId)
+        const isPending = pendingIn.some((p:any) => p.requester_id === viewUserId)
+        const close = () => setViewUserId(null)
+        return (
+          <ProfileCard userId={viewUserId} lang={lang} onClose={close}>
+            {isFriend
+              ? <button onClick={() => { close(); openChat(viewUserId) }}><Icon name="message" size={14}/>{lang==='ja'?'メッセージ':'Message'}</button>
+              : isPending
+                ? <button disabled><Icon name="clock" size={14}/>{lang==='ja'?'申請が届いています':'Request pending'}</button>
+                : <button onClick={() => requestFriend(viewUserId, name)}><Icon name="userPlus" size={14}/>{lang==='ja'?'フレンド申請':'Add friend'}</button>}
+            {isFriend && <button onClick={() => { close(); unfriend(viewUserId, name) }}><Icon name="x" size={14}/>{lang==='ja'?'フレンド解除':'Unfriend'}</button>}
+            {isFriend && <button onClick={() => studyTogetherWith(viewUserId, name)}><Icon name="users" size={14}/>{lang==='ja'?'一緒に勉強しよう':'Study together'}</button>}
+            {isFriend && room.id && <button onClick={() => inviteFriend(viewUserId, name).catch(() => {})}><Icon name="rooms" size={14}/>{lang==='ja'?'この部屋に招待':'Invite here'}</button>}
+            {m && <button onClick={() => { close(); onPinClick(viewUserId, name) }}><Icon name="pin" size={14}/>{isPinned(viewUserId)?(lang==='ja'?'ピン解除':'Unpin'):(lang==='ja'?'ピン留め':'Pin')}</button>}
+            {m && isPinned(viewUserId) && <button onClick={() => { close(); setPinTarget({ userId: viewUserId, name }) }}><Icon name="pin" size={14}/>{lang==='ja'?'ピンの理由を変える':'Edit pin'}</button>}
+            <button onClick={() => { close(); setReportModal({ userId:viewUserId, name }) }}><Icon name="flag" size={14}/>{lang==='ja'?'報告':'Report'}</button>
+            {blockedIds.has(viewUserId)
+              ? <button onClick={() => handleUnblock(viewUserId, name)}><Icon name="x" size={14}/>{lang==='ja'?'ブロック解除':'Unblock'}</button>
+              : <button onClick={() => { close(); setBlockModal({ userId:viewUserId, name }) }}><Icon name="x" size={14}/>{lang==='ja'?'ブロック':'Block'}</button>}
+          </ProfileCard>
+        )
+      })()}
 
       {/* BLOCK MODAL */}
       {blockModal && (
-        <div className={styles.overlay}>
-          <div className={styles.modal}>
-            <h3>🚫 ユーザーをブロック</h3>
-            <p>「{blockModal.name}」をブロックしますか？</p>
+        <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setBlockModal(null) }}>
+          <div className={styles.modal} role="dialog" aria-modal="true" aria-label={tr('ブロック','Block')}>
+            <h3>🚫 {lang==='ja'?'ユーザーをブロック':'Block user'}</h3>
+            <p>{lang==='ja'
+              ? `「${blockModal.name}」さんをブロックしますか？お互いのカメラ・メッセージ・フレンド申請が届かなくなり、フレンドも解除されます。あとからフレンド一覧の下で解除できます。`
+              : `Block ${blockModal.name}? You won't see each other's camera, messages or friend requests.`}</p>
             <div className={styles.modalBtns}>
-              <button className={`${styles.mBtn} ${styles.ghost}`} onClick={() => setBlockModal(null)}>キャンセル</button>
-              <button className={`${styles.mBtn} ${styles.danger}`} onClick={() => handleBlock(blockModal.userId, blockModal.name)}>ブロック</button>
+              <button className={`${styles.mBtn} ${styles.ghost}`} onClick={() => setBlockModal(null)}>{tr('キャンセル','Cancel')}</button>
+              <button className={`${styles.mBtn} ${styles.danger}`} onClick={() => handleBlock(blockModal.userId, blockModal.name)}>{tr('ブロック','Block')}</button>
             </div>
           </div>
         </div>
@@ -715,18 +953,19 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
 
       {/* REPORT MODAL */}
       {reportModal && (
-        <div className={styles.overlay}>
-          <div className={styles.modal}>
-            <h3>📢 ユーザーを報告</h3>
-            <p>「{reportModal.name}」を報告する理由：</p>
+        <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setReportModal(null) }}>
+          <div className={styles.modal} role="dialog" aria-modal="true" aria-label={tr('報告','Report')}>
+            <h3>📢 {tr('ユーザーを報告','Report user')}</h3>
+            <p>{tr(`「${reportModal.name}」を報告する理由：`, `Why are you reporting ${reportModal.name}?`)}</p>
             <div className={styles.reportBtns}>
-              {['迷惑行為・荒らし','不適切なカメラ映像','スパム','その他'].map((reason: any) => (
+              {/* 理由は運営が読むので日本語のまま保存し、表示だけ切り替える */}
+              {([['迷惑行為・荒らし','Harassment / trolling'],['不適切なカメラ映像','Inappropriate video'],['スパム','Spam'],['その他','Other']] as const).map(([reason, en]) => (
                 <button key={reason} className={`${styles.mBtn} ${styles.ghost}`}
-                  onClick={() => handleReport(reportModal.userId, reason)}>{reason}</button>
+                  onClick={() => handleReport(reportModal.userId, reason)}>{tr(reason, en)}</button>
               ))}
             </div>
             <div className={styles.modalBtns}>
-              <button className={`${styles.mBtn} ${styles.ghost}`} onClick={() => setReportModal(null)}>キャンセル</button>
+              <button className={`${styles.mBtn} ${styles.ghost}`} onClick={() => setReportModal(null)}>{tr('キャンセル','Cancel')}</button>
             </div>
           </div>
         </div>
@@ -734,26 +973,26 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
 
       {/* REACTION MODAL */}
       {reactionTarget && (
-        <div className={styles.overlay}>
-          <div className={styles.modal}>
-            <h3>リアクションを送る</h3>
-            <p>「{reactionTarget.name}」さんへ</p>
+        <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setReactionTarget(null) }}>
+          <div className={styles.modal} role="dialog" aria-modal="true" aria-label={tr('リアクション','Reaction')}>
+            <h3>{tr('リアクションを送る','Send a reaction')}</h3>
+            <p>{tr(`「${reactionTarget.name}」さんへ`, `To ${reactionTarget.name}`)}</p>
             <div style={{ display:'flex', gap:10, flexWrap:'wrap', justifyContent:'center', margin:'16px 0' }}>
               {REACTION_EMOJIS.map((emoji: any) => (
                 <button key={emoji} style={{ fontSize:28, padding:'8px 12px', background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:10, cursor:'pointer' }}
                   onClick={async () => {
                     const result = await sendReaction(reactionTarget.userId, emoji)
                     if (result?.success) {
-                      setReactionResult(`${emoji} 送りました！`)
-                      addNotif(emoji, `「${reactionTarget.name}」さんにリアクションを送りました`)
+                      setReactionResult(`${emoji} ${tr('送りました！','Sent!')}`)
+                      addNotif(emoji, tr(`「${reactionTarget.name}」さんにリアクションを送りました`, `Sent a reaction to ${reactionTarget.name}`))
                       setTimeout(() => { setReactionResult(null); setReactionTarget(null) }, 1500)
-                    } else { setReactionResult(result?.error ?? 'エラー'); setTimeout(() => setReactionResult(null), 2000) }
+                    } else { setReactionResult(result?.error ?? tr('エラー','Error')); setTimeout(() => setReactionResult(null), 2000) }
                   }}>{emoji}</button>
               ))}
             </div>
             {reactionResult && <div style={{ textAlign:'center', color:'var(--accent3)', marginBottom:12 }}>{reactionResult}</div>}
             <div className={styles.modalBtns}>
-              <button className={`${styles.mBtn} ${styles.ghost}`} onClick={() => { setReactionTarget(null); setReactionResult(null) }}>閉じる</button>
+              <button className={`${styles.mBtn} ${styles.ghost}`} onClick={() => { setReactionTarget(null); setReactionResult(null) }}>{tr('閉じる','Close')}</button>
             </div>
           </div>
         </div>
@@ -761,34 +1000,34 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
 
       {/* CUSTOM TIMER MODAL */}
       {showCustomTimer && (
-        <div className={styles.overlay}>
-          <div className={styles.modal}>
-            <h3>⏱ カスタムタイマー設定</h3>
+        <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setShowCustomTimer(false) }}>
+          <div className={styles.modal} role="dialog" aria-modal="true" aria-label={tr('カスタムタイマー','Custom timer')}>
+            <h3>⏱ {tr('カスタムタイマー設定','Custom timer')}</h3>
             <div style={{ display:'flex', flexDirection:'column', gap:16, margin:'16px 0' }}>
               <div>
-                <label style={{ fontSize:12, color:'var(--muted)', display:'block', marginBottom:6 }}>集中時間（分）</label>
+                <label style={{ fontSize:12, color:'var(--muted)', display:'block', marginBottom:6 }}>{tr('集中時間（分）','Focus (min)')}</label>
                 <div style={{ display:'flex', alignItems:'center', gap:10 }}>
                   <input type="range" min="5" max="120" step="5" value={customFocusInput}
                     onChange={e => setCustomFocusInput(Number(e.target.value))}
                     style={{ flex:1 }} />
-                  <span style={{ fontFamily:'monospace', fontSize:18, color:'var(--accent)', minWidth:40 }}>{customFocusInput}分</span>
+                  <span style={{ fontFamily:'monospace', fontSize:18, color:'var(--accent)', minWidth:40 }}>{customFocusInput}{tr('分','m')}</span>
                 </div>
               </div>
               <div>
-                <label style={{ fontSize:12, color:'var(--muted)', display:'block', marginBottom:6 }}>休憩時間（分）</label>
+                <label style={{ fontSize:12, color:'var(--muted)', display:'block', marginBottom:6 }}>{tr('休憩時間（分）','Break (min)')}</label>
                 <div style={{ display:'flex', alignItems:'center', gap:10 }}>
                   <input type="range" min="1" max="30" step="1" value={customBreakInput}
                     onChange={e => setCustomBreakInput(Number(e.target.value))}
                     style={{ flex:1 }} />
-                  <span style={{ fontFamily:'monospace', fontSize:18, color:'var(--accent3)', minWidth:40 }}>{customBreakInput}分</span>
+                  <span style={{ fontFamily:'monospace', fontSize:18, color:'var(--accent3)', minWidth:40 }}>{customBreakInput}{tr('分','m')}</span>
                 </div>
               </div>
             </div>
             <div className={styles.modalBtns}>
-              <button className={`${styles.mBtn} ${styles.ghost}`} onClick={() => setShowCustomTimer(false)}>キャンセル</button>
+              <button className={`${styles.mBtn} ${styles.ghost}`} onClick={() => setShowCustomTimer(false)}>{tr('キャンセル','Cancel')}</button>
               <button className={`${styles.mBtn} ${styles.primary}`}
-                onClick={() => { timer.applyCustom(customFocusInput, customBreakInput); setShowCustomTimer(false); showToast(`⏱ ${customFocusInput}分集中タイマーをセットしました`) }}>
-                セット
+                onClick={() => { timer.applyCustom(customFocusInput, customBreakInput); setShowCustomTimer(false); showToast(tr(`⏱ ${customFocusInput}分集中タイマーをセットしました`, `⏱ ${customFocusInput}-min focus timer set`)) }}>
+                {tr('セット','Set')}
               </button>
             </div>
           </div>
@@ -797,11 +1036,11 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
 
       {/* SESSION SCHEDULER MODAL */}
       {showScheduler && (
-        <div className={styles.overlay}>
-          <div className={styles.modal}>
-            <h3>📅 勉強セッションを予約</h3>
+        <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setShowScheduler(false) }}>
+          <div className={styles.modal} role="dialog" aria-modal="true" aria-label={tr('予約','Schedule')}>
+            <h3>📅 {tr('勉強セッションを予約','Schedule a study session')}</h3>
             <div style={{ display:'flex', flexDirection:'column', gap:10, margin:'16px 0' }}>
-              <input placeholder="セッションのタイトル（例：英語リスニング集中会）"
+              <input placeholder={tr('セッションのタイトル（例：英語リスニング集中会）','Session title (e.g. English listening)')}
                 value={schedTitle} onChange={e => setSchedTitle(e.target.value)}
                 style={{ padding:'8px 10px', background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:7, color:'var(--text)', fontSize:13, fontFamily:'inherit', outline:'none' }} />
               <div style={{ display:'flex', gap:8 }}>
@@ -811,19 +1050,19 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                   style={{ flex:1, padding:'8px 10px', background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:7, color:'var(--text)', fontSize:13, fontFamily:'inherit', outline:'none' }} />
               </div>
               <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-                <label style={{ fontSize:12, color:'var(--muted)', whiteSpace:'nowrap' }}>時間：</label>
+                <label style={{ fontSize:12, color:'var(--muted)', whiteSpace:'nowrap' }}>{tr('時間：','Length:')}</label>
                 <select value={schedDuration} onChange={e => setSchedDuration(Number(e.target.value))}
                   style={{ flex:1, padding:'8px 10px', background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:7, color:'var(--text)', fontSize:13, fontFamily:'inherit', outline:'none' }}>
-                  <option value={30}>30分</option>
-                  <option value={60}>1時間</option>
-                  <option value={90}>1時間30分</option>
-                  <option value={120}>2時間</option>
+                  <option value={30}>{tr('30分','30 min')}</option>
+                  <option value={60}>{tr('1時間','1 hour')}</option>
+                  <option value={90}>{tr('1時間30分','1.5 hours')}</option>
+                  <option value={120}>{tr('2時間','2 hours')}</option>
                 </select>
               </div>
             </div>
             <div className={styles.modalBtns}>
-              <button className={`${styles.mBtn} ${styles.ghost}`} onClick={() => setShowScheduler(false)}>キャンセル</button>
-              <button className={`${styles.mBtn} ${styles.primary}`} onClick={scheduleSession}>予約する</button>
+              <button className={`${styles.mBtn} ${styles.ghost}`} onClick={() => setShowScheduler(false)}>{tr('キャンセル','Cancel')}</button>
+              <button className={`${styles.mBtn} ${styles.primary}`} onClick={scheduleSession}>{tr('予約する','Schedule')}</button>
             </div>
           </div>
         </div>
@@ -837,7 +1076,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
             <div style={{ display:'flex', flexWrap:'wrap', gap:8, margin:'16px 0' }}>
               {SUBJECTS.map((s: any) => (
                 <button key={s}
-                  style={{ padding:'6px 14px', borderRadius:20, border:`1px solid ${mySubject===s?'var(--accent)':'var(--border)'}`, background:mySubject===s?'rgba(108,138,255,.15)':'var(--bg3)', color:mySubject===s?'var(--accent)':'var(--muted2)', fontSize:13, cursor:'pointer', fontFamily:'inherit', transition:'.15s' }}
+                  style={{ padding:'6px 14px', borderRadius:20, border:`1px solid ${mySubject===s?'var(--accent)':'var(--border)'}`, background:mySubject===s?'rgba(125,149,255,.15)':'var(--bg3)', color:mySubject===s?'var(--accent)':'var(--muted2)', fontSize:13, cursor:'pointer', fontFamily:'inherit', transition:'.15s' }}
                   onClick={() => changeSubject(s)}>{s}</button>
               ))}
             </div>
@@ -858,11 +1097,11 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
           <div className={styles.clock}>{currentTime}</div>
           <ThemeToggle />
           <button onClick={toggleLang}
-            style={{ padding:'4px 10px', background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:6, color:'var(--muted2)', fontSize:11, cursor:'pointer', fontFamily:'inherit', fontWeight:600 }}>
-            {lang === 'ja' ? '🇬🇧 EN' : '🇯🇵 JP'}
+            style={{ minHeight:32, minWidth:40, padding:'4px 10px', background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:6, color:'var(--muted2)', fontSize:11, cursor:'pointer', fontFamily:'inherit', fontWeight:600 }}>
+            {lang === 'ja' ? 'EN' : '日本語'}
           </button>
-          <div className={styles.avatarBtn} onClick={() => { setEditName(profile.display_name); setShowProfileEdit(true) }}
-            style={{ cursor:'pointer' }} title={lang==='ja'?'名前を変更':'Edit name'}>
+          <div className={styles.avatarBtn} onClick={() => setShowProfileEdit(true)}
+            style={{ cursor:'pointer' }} title={lang==='ja'?'プロフィールを編集':'Edit profile'}>
             {profile.avatar_url ? <img src={profile.avatar_url} alt="" width={32} height={32} style={{ borderRadius:'50%', objectFit:'cover' }}/> : profile.display_name[0]}
           </div>
           <button className={styles.signOutBtn} onClick={() => signOut({ callbackUrl:'/' })}>{T.logout}</button>
@@ -913,7 +1152,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                 {localStream
                   ? <video className={`${styles.ssVideo} ${styles.ssVideoMirror}`} ref={v => { if (v && v.srcObject !== localStream) { v.srcObject = localStream; (faceVideoRef as any).current = v } }} autoPlay muted playsInline/>
                   : <div className={styles.ssTileOff}>
-                      <div className={styles.ssAvatar} style={{ background:'rgba(108,138,255,.2)', color:'var(--accent)' }}>
+                      <div className={styles.ssAvatar} style={{ background:'rgba(125,149,255,.2)', color:'var(--accent)' }}>
                         {profile.avatar_url ? <img src={profile.avatar_url} alt=""/> : profile.display_name[0]}
                       </div>
                       <button className={styles.ssCamCta} onClick={() => setCameraOn(true)}><Icon name="camera" size={13}/> {lang==='ja'?'カメラをONにする':'Turn camera on'}</button>
@@ -925,7 +1164,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                   {streak > 0 && <span className={styles.ssChip}>{lang==='ja'?`${streak}日連続`:`${streak}-day streak`}</span>}
                 </div>
                 <div className={styles.ssTileBottom}>
-                  <span className={styles.ssName}>{profile.display_name} <span style={{ opacity:.6 }}>{lang==='ja'?'(あなた)':'(you)'}</span></span>
+                  <button className={styles.ssName} onClick={() => setShowProfileEdit(true)} title={lang==='ja'?'プロフィールを編集':'Edit profile'}>{profile.display_name} <span style={{ opacity:.6 }}>{lang==='ja'?'(あなた)':'(you)'}</span></button>
                   {mySubject && <span className={styles.ssChip}>{mySubject}</span>}
                 </div>
                 {(() => { const dm = dailyMessages.find((d: any) => d.user_id === profile.id); return dm ? <div className={styles.ssBubble}>{dm.content}</div> : null })()}
@@ -943,11 +1182,11 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                 const isFriend = displayFriends.some((f:any) => f.addressee_id === m.user_id)
                 const isPending = pendingIn.some((p:any) => p.requester_id === m.user_id)
                 return (
-                  <div key={m.id} className={`${styles.ssTile} ${isPinnedUser?styles.ssTilePinned:''} ${m.status==='away'?styles.ssTileAway:''}`}>
+                  <div key={m.id} className={`${styles.ssTile} ${isPinnedUser?styles.ssTilePinned:''} ${matchedIds.has(m.user_id)?styles.ssTilePair:''} ${m.user_id===neighborId?styles.ssTileSeat:''} ${m.status==='away'?styles.ssTileAway:''}`}>
                     {rs
                       ? <video className={styles.ssVideo} ref={v => { if (v && v.srcObject !== rs) v.srcObject = rs }} autoPlay playsInline/>
                       : <div className={styles.ssTileOff}>
-                          <div className={styles.ssAvatar} style={{ background:`${color}22`, color }}>
+                          <div className={styles.ssAvatar} style={{ background:`${color}22`, color, cursor:'pointer' }} onClick={() => setViewUserId(m.user_id)}>
                             {mp.avatar_url ? <img src={mp.avatar_url} alt=""/> : mp.display_name[0]}
                           </div>
                         </div>}
@@ -955,31 +1194,31 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                       <span className={`${styles.ssStatus} ${m.status==='studying'?styles.ssStatusStudy:m.status==='break'?styles.ssStatusBreak:styles.ssStatusAway}`}>
                         {statusLabel(m.status)}
                       </span>
-                      {isPinnedUser && <span className={styles.ssChip}><Icon name="pin" size={10}/></span>}
+                      {matchedIds.has(m.user_id)
+                        ? <span className={`${styles.ssChip} ${styles.ssChipPair}`}>🤝 {lang==='ja'?'ペア':'Pair'}</span>
+                        : isPinnedUser && <span className={styles.ssChip}><Icon name="pin" size={10}/></span>}
+                      {m.user_id === neighborId && <span className={`${styles.ssChip} ${styles.ssChipSeat}`}>🪑 {lang==='ja'?'きょうのとなり':'Your neighbor'}</span>}
+                      {myGoal && memberGoals[m.user_id] === myGoal && <span className={styles.ssChip}>🎯 {lang==='ja'?'同じ目標':'Same goal'}</span>}
+                      {!matchedIds.has(m.user_id) && pinFrom(m.user_id) && <span className={styles.ssChip} title={pinFrom(m.user_id)?.reason ?? ''}>📌 {lang==='ja'?'あなたをピン':'Pinned you'}</span>}
+                      {!rs && m.camera_on && videoPeerIds.indexOf(m.user_id) === -1 && <span className={styles.ssChip}>{lang==='ja'?'映像は近くの席の8人まで':'Video: nearest 8'}</span>}
                       {rxs.length > 0 && <span className={styles.ssChip}>{rxs.slice(-3).map(r => r.emoji).join('')}</span>}
                     </div>
                     <div className={styles.ssTileActions}>
                       <button title={lang==='ja'?'リアクション':'React'} onClick={() => setReactionTarget({ userId:m.user_id, name:mp.display_name })}><Icon name="smile" size={14}/></button>
-                      <button title={isPinnedUser?(lang==='ja'?'ピン解除':'Unpin'):(lang==='ja'?'ピン留め':'Pin')} onClick={() => togglePin(m.user_id)} style={{ opacity:isPinnedUser?1:.6 }}><Icon name="pin" size={14}/></button>
+                      <button title={isPinnedUser?(lang==='ja'?'ピン解除':'Unpin'):(lang==='ja'?'ピン留め':'Pin')} onClick={() => onPinClick(m.user_id, mp.display_name)} style={{ opacity:isPinnedUser?1:.6 }}><Icon name="pin" size={14}/></button>
                       {isFriend ? (
                         <button title={lang==='ja'?'チャット':'Chat'} onClick={() => openChat(m.user_id)}><Icon name="message" size={14}/></button>
                       ) : isPending ? (
                         <button title={lang==='ja'?'申請中':'Pending'} disabled><Icon name="clock" size={14}/></button>
                       ) : (
-                        <button title={lang==='ja'?'フレンド申請':'Add Friend'} onClick={async () => {
-                          const result = await sendFriendRequest(m.user_id)
-                          if (result === 'sent') {
-                            showToast(lang==='ja'?`👋 ${mp.display_name}さんにフレンド申請しました！`:`👋 Friend request sent to ${mp.display_name}!`)
-                            addNotif('👋', lang==='ja'?`${mp.display_name}さんにフレンド申請しました`:`Friend request sent to ${mp.display_name}`)
-                          } else {
-                            showToast(lang==='ja'?'既に申請済みです':'Already requested')
-                          }
-                        }}><Icon name="userPlus" size={14}/></button>
+                        <button title={lang==='ja'?'一緒に勉強しよう（フレンド申請）':'Study together (add friend)'} onClick={() => requestFriend(m.user_id, mp.display_name)}><Icon name="userPlus" size={14}/></button>
                       )}
+                      {isFriend && <button title={lang==='ja'?'一緒に勉強しよう（ペア申請）':'Study together (pair)'} onClick={() => studyTogetherWith(m.user_id, mp.display_name)}><Icon name="users" size={14}/></button>}
                       <button title={lang==='ja'?'報告':'Report'} onClick={() => setReportModal({ userId:m.user_id, name:mp.display_name })}><Icon name="flag" size={14}/></button>
+                      <button title={lang==='ja'?'ブロック':'Block'} onClick={() => setBlockModal({ userId:m.user_id, name:mp.display_name })}><Icon name="x" size={14}/></button>
                     </div>
                     <div className={styles.ssTileBottom}>
-                      <span className={styles.ssName}>{mp.display_name}</span>
+                      <button className={styles.ssName} onClick={() => setViewUserId(m.user_id)} title={lang==='ja'?'プロフィールを見る':'View profile'}>{mp.display_name}</button>
                       {memberSubject && <span className={styles.ssChip} style={{ color }}>{memberSubject}</span>}
                     </div>
                     {dm && <div className={styles.ssBubble}>{dm.content}</div>}
@@ -993,7 +1232,10 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                   <div className={styles.ssTileOff}>
                     <div style={{ color:'var(--muted)' }}><Icon name="seat" size={26} strokeWidth={1.3}/></div>
                     <div style={{ fontSize:12, color:'var(--muted)' }}>{lang==='ja'?'もうすぐ誰かが来るかも…':'Someone may join soon…'}</div>
-                    <button className={styles.ssCamCta} onClick={() => togglePanel('rooms')}>{lang==='ja'?'他のルームを見る':'Browse rooms'}</button>
+                    <div style={{ display:'flex', gap:6, flexWrap:'wrap', justifyContent:'center' }}>
+                      <button className={styles.ssCamCta} onClick={() => togglePanel('friends')}>🤝 {lang==='ja'?'友達を呼ぶ':'Invite friends'}</button>
+                      <button className={styles.ssCamCta} onClick={() => togglePanel('rooms')}>{lang==='ja'?'他のルームを見る':'Browse rooms'}</button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1061,7 +1303,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                   </div>
                   <div>
                     <div style={{ fontWeight:600, fontSize:13 }}>{chatFriendProfile.display_name}</div>
-                    <div style={{ fontSize:10, color:'var(--accent3)' }}>● オンライン</div>
+                    <div style={{ fontSize:10, color:'var(--muted)' }}>{friendStatus(chatFriendId!).label}</div>
                   </div>
                 </div>
                 <button className={styles.chatClose} onClick={() => setChatFriendId(null)}>✕</button>
@@ -1069,14 +1311,19 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
               <div className={styles.chatMsgs}>
                 {chatMessages.map((msg: any) => (
                   <div key={msg.id} className={`${styles.msg} ${msg.sender_id===profile.id?styles.msgMe:styles.msgThem}`}>
-                    <div className={styles.msgBubble}>{msg.content}</div>
+                    <div className={styles.msgBubble}><ChatBubbleContent content={msg.content} mine={msg.sender_id===profile.id} lang={lang}/></div>
                     <div className={styles.msgTime}>{new Date(msg.created_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</div>
                   </div>
                 ))}
                 <div ref={chatEndRef}/>
               </div>
+              {chatMessages.length < 2 && (
+                <div className={styles.chatHints} aria-label={lang==='ja'?'話しかけのヒント':'Message ideas'}>
+                  {(lang==='ja'?CHAT_HINTS_JA:CHAT_HINTS_EN).map(h => <button key={h} type="button" onClick={() => setChatInput(h)}>{h}</button>)}
+                </div>
+              )}
               <div className={styles.chatInputRow}>
-                <input className={styles.chatInput} value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => e.key==='Enter'&&handleSendMsg()} placeholder={T.messagePlaceholder}/>
+                <input className={styles.chatInput} value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => e.key==='Enter'&&handleSendMsg()} placeholder={chatFriendId && blockedIds.has(chatFriendId) ? (lang==='ja'?'ブロック中のため送れません':'Blocked') : T.messagePlaceholder} disabled={!!chatFriendId && blockedIds.has(chatFriendId)}/>
                 <button className={styles.chatSend} onClick={handleSendMsg}>{T.send}</button>
               </div>
             </div>
@@ -1094,23 +1341,23 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                       <div className={styles.timerModes}>
                         {(['focus','short','long'] as const).map((m,i) => (
                           <button key={m} className={`${styles.modeBtn} ${timer.mode===m?styles.modeBtnActive:''}`} onClick={() => timer.switchMode(m)}>
-                            {['集中','小休憩','長休憩'][i]}
+                            {[tr('集中','Focus'),tr('小休憩','Short'),tr('長休憩','Long')][i]}
                           </button>
                         ))}
                         <button className={`${styles.modeBtn} ${timer.mode==='custom'?styles.modeBtnActive:''}`}
-                          onClick={() => setShowCustomTimer(true)}>カスタム</button>
+                          onClick={() => setShowCustomTimer(true)}>{tr('カスタム','Custom')}</button>
                       </div>
                       {timer.mode === 'custom' && (
                         <div style={{ textAlign:'center', fontSize:11, color:'var(--accent)', marginBottom:6 }}>
-                          集中{timer.customFocusMins}分 / 休憩{timer.customBreakMins}分
-                          <button onClick={() => setShowCustomTimer(true)} style={{ marginLeft:6, fontSize:10, color:'var(--muted)', background:'transparent', border:'none', cursor:'pointer' }}>変更</button>
+                          {tr(`集中${timer.customFocusMins}分 / 休憩${timer.customBreakMins}分`, `Focus ${timer.customFocusMins}m / Break ${timer.customBreakMins}m`)}
+                          <button onClick={() => setShowCustomTimer(true)} style={{ marginLeft:6, fontSize:10, color:'var(--muted)', background:'transparent', border:'none', cursor:'pointer' }}>{tr('変更','Edit')}</button>
                         </div>
                       )}
                       <div className={styles.ringWrap}>
                         <svg className={styles.timerRing} width="170" height="170" viewBox="0 0 110 110">
                           <defs>
                             <linearGradient id="rg" x1="0%" y1="0%" x2="100%" y2="100%">
-                              <stop offset="0%" stopColor="#6c8aff"/><stop offset="100%" stopColor="#a78bfa"/>
+                              <stop offset="0%" stopColor="var(--accent)"/><stop offset="100%" stopColor="#a78bfa"/>
                             </linearGradient>
                           </defs>
                           <circle className={styles.ringBg} cx="55" cy="55" r="50"/>
@@ -1133,7 +1380,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                     <div>
                       <div className={styles.secLabel}>{lang==='ja'?'勉強科目':'Subject'}</div>
                       <button onClick={() => setShowSubjectPicker(true)} style={{ width:'100%', padding:'8px 12px', background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:8, color:mySubject?'var(--accent)':'var(--muted)', fontSize:12, cursor:'pointer', fontFamily:'inherit', textAlign:'left', transition:'.2s' }}>
-                        {mySubject || '科目を選択...'} ▾
+                        {mySubject || tr('科目を選択...','Choose subject...')} ▾
                       </button>
                     </div>
                   </>
@@ -1156,7 +1403,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                       <TaskPanel userId={profile.id} roomId={room.id} tasks={tasks}
                         onAddTask={addTask} onCompleteTask={completeTask} onDeleteTask={deleteTask}
                         onUpdateShare={updateTaskShareLocal}
-                        friends={friendsForTaskPanel}/>
+                        friends={friendsForTaskPanel} lang={lang}/>
                     </div>
                   </>
                 )}
@@ -1171,13 +1418,14 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                         <div className={styles.statCard}><div className={styles.statVal}>{streak}🔥</div><div className={styles.statSub}>{T.streak}</div></div>
                         <div className={styles.statCard}><div className={styles.statVal}>{tasksDoneToday}</div><div className={styles.statSub}>{T.tasksDone}</div></div>
                       </div>
+                      <ShareCard lang={lang} displayName={profile.display_name} todaySeconds={todaySeconds} pomosToday={pomosToday} streak={streak} week={weeklyStats as any} onToast={showToast}/>
                     </div>
                     <div>
                       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
-                        <div className={styles.secLabel} style={{ marginBottom:0 }}>{statView==='week'?'今週':'今月'}</div>
+                        <div className={styles.secLabel} style={{ marginBottom:0 }}>{statView==='week'?tr('今週','This week'):tr('今月','This month')}</div>
                         <div style={{ display:'flex', gap:4 }}>
-                          <button onClick={() => setStatView('week')} style={{ padding:'2px 8px', borderRadius:4, border:`1px solid ${statView==='week'?'var(--accent)':'var(--border)'}`, background:statView==='week'?'rgba(108,138,255,.15)':'transparent', color:statView==='week'?'var(--accent)':'var(--muted)', fontSize:10, cursor:'pointer', fontFamily:'inherit' }}>週</button>
-                          <button onClick={() => setStatView('month')} style={{ padding:'2px 8px', borderRadius:4, border:`1px solid ${statView==='month'?'var(--accent)':'var(--border)'}`, background:statView==='month'?'rgba(108,138,255,.15)':'transparent', color:statView==='month'?'var(--accent)':'var(--muted)', fontSize:10, cursor:'pointer', fontFamily:'inherit' }}>月</button>
+                          <button onClick={() => setStatView('week')} style={{ padding:'2px 8px', borderRadius:4, border:`1px solid ${statView==='week'?'var(--accent)':'var(--border)'}`, background:statView==='week'?'rgba(125,149,255,.15)':'transparent', color:statView==='week'?'var(--accent)':'var(--muted)', fontSize:10, cursor:'pointer', fontFamily:'inherit' }}>{tr('週','W')}</button>
+                          <button onClick={() => setStatView('month')} style={{ padding:'2px 8px', borderRadius:4, border:`1px solid ${statView==='month'?'var(--accent)':'var(--border)'}`, background:statView==='month'?'rgba(125,149,255,.15)':'transparent', color:statView==='month'?'var(--accent)':'var(--muted)', fontSize:10, cursor:'pointer', fontFamily:'inherit' }}>{tr('月','M')}</button>
                         </div>
                       </div>
                       {statView==='week' ? (
@@ -1205,7 +1453,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                               </div>
                             )
                           })}
-                          {monthStats.length===0 && <div style={{ fontSize:11, color:'var(--muted)', textAlign:'center', width:'100%' }}>今月のデータなし</div>}
+                          {monthStats.length===0 && <div style={{ fontSize:11, color:'var(--muted)', textAlign:'center', width:'100%' }}>{tr('今月のデータなし','No data this month')}</div>}
                         </div>
                       )}
                     </div>
@@ -1244,12 +1492,13 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
 
                 {panel==='friends' && (
                   <>
+                    <StudyTogether lang={lang} room={room} userId={profile.id} displayName={profile.display_name} myPrivateRooms={myPrivateRooms} onToast={showToast}/>
                     {pendingIn.length > 0 && (
                       <div>
                         {pendingIn.map((req: any) => {
                           const rp = req.profiles
                           return (
-                            <div key={req.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 10px', background:'rgba(108,138,255,.08)', border:'1px solid rgba(108,138,255,.3)', borderRadius:8, marginBottom:5 }}>
+                            <div key={req.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 10px', background:'rgba(125,149,255,.08)', border:'1px solid rgba(125,149,255,.3)', borderRadius:8, marginBottom:5 }}>
                               <div style={{ width:28, height:28, borderRadius:'50%', background:'var(--accent)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:700, flexShrink:0, overflow:'hidden' }}>
                                 {rp?.avatar_url ? <img src={rp.avatar_url} width={28} height={28} style={{ borderRadius:'50%' }} alt=""/> : rp?.display_name?.[0]}
                               </div>
@@ -1257,8 +1506,12 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                                 <div style={{ fontSize:12, fontWeight:600 }}>{rp?.display_name}</div>
                                 <div style={{ fontSize:10, color:'var(--muted)' }}>{lang==='ja'?'フレンド申請が届いています':'Friend request'}</div>
                               </div>
-                              <button onClick={() => { acceptFriendRequest(req.id); showToast(lang==='ja'?`✅ ${rp?.display_name}さんとフレンドになりました`:`✅ Now friends with ${rp?.display_name}`) }}
-                                style={{ padding:'4px 10px', background:'var(--accent)', border:'none', borderRadius:6, color:'#fff', fontSize:11, cursor:'pointer', fontFamily:'inherit', fontWeight:600 }}>
+                              <button onClick={() => declineRequest(req.id)}
+                                style={{ minHeight:32, padding:'4px 10px', background:'transparent', border:'1px solid var(--border2)', borderRadius:8, color:'var(--muted2)', fontSize:12, cursor:'pointer', fontFamily:'inherit' }}>
+                                {lang==='ja'?'見送る':'Decline'}
+                              </button>
+                              <button onClick={() => acceptRequest(req.id, rp?.display_name ?? '')}
+                                style={{ minHeight:32, padding:'4px 12px', background:'var(--accent)', border:'none', borderRadius:8, color:'#fff', fontSize:12, cursor:'pointer', fontFamily:'inherit', fontWeight:600 }}>
                                 {lang==='ja'?'承認':'Accept'}
                               </button>
                             </div>
@@ -1274,11 +1527,14 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                           <div key={f.id} className={styles.friendItem} onClick={() => openChat(f.addressee_id)}>
                             <div className={styles.friendAvatar}>
                               {fp.avatar_url ? <img src={fp.avatar_url} alt="" width={30} height={30} style={{ borderRadius:'50%', objectFit:'cover' }}/> : fp.display_name[0]}
-                              <div className={styles.friendDot}/>
+                              <div className={styles.friendDot} style={{ background: ({ here:'var(--accent)', studying:'var(--accent3)', online:'var(--warn)', offline:'rgba(var(--fg),.2)' } as Record<string,string>)[friendStatus(f.addressee_id).tone] }}/>
                             </div>
                             <div className={styles.friendInfo}>
                               <div className={styles.friendName}>{fp.display_name}{unread>0&&<span className={styles.unreadBadge}>{unread}</span>}</div>
-                              <div className={styles.friendMeta}>勉強中</div>
+                              <FriendPresence status={friendStatus(f.addressee_id)} lang={lang}
+                                onJoin={joinFriendRoom}
+                                onInvite={() => inviteFriend(f.addressee_id, fp.display_name)}
+                                onAskInvite={() => askInvite(f.addressee_id, fp.display_name)}/>
                             </div>
                             <div className={styles.friendActions}>
                               <button className={`${styles.faBtn} ${styles.faBtnChat}`} onClick={e => { e.stopPropagation(); openChat(f.addressee_id) }}>💬</button>
@@ -1289,11 +1545,19 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                       })}
                       {displayFriends.length===0&&<div style={{ fontSize:11, color:'var(--muted)', textAlign:'center', padding:'12px 0' }}>{T.noFriends}</div>}
                     </div>
+                    <BlockedList lang={lang} blocked={blocked} onUnblock={handleUnblock}/>
                   </>
                 )}
 
                 {panel==='rooms' && (
                   <div className={styles.ssRoomList}>
+                    {[...(room.is_private && !myPrivateRooms.some(r => r.id === room.id) ? [room] : []), ...myPrivateRooms].map((r: any) => (
+                      <div key={r.id} className={`${styles.roomCard} ${r.id===room.id?styles.roomCardActive:''}`} onClick={() => r.id !== room.id && router.push(`/room/${r.id}`)}>
+                        <div className={styles.roomName}>{r.emoji} {r.name} <span style={{ fontSize:10, color:'var(--muted)' }}>🔒 {lang==='ja'?'友達だけ':'Friends only'}</span>{r.id===room.id && <span style={{ marginLeft:6, fontSize:10, color:'var(--accent3)' }}>● {lang==='ja'?'入室中':'Here'}</span>}</div>
+                        <div className={styles.roomDesc}>{r.description}</div>
+                      </div>
+                    ))}
+                    <button className={styles.ssCamCta} style={{ margin:'2px 0 8px' }} onClick={() => togglePanel('friends')}>🤝 {lang==='ja'?'友達だけの部屋を作る・招待する':'Create a room for friends'}</button>
                     {allRooms.map((r: any) => (
                       <div key={r.id} className={`${styles.roomCard} ${r.id===room.id?styles.roomCardActive:''}`} onClick={() => r.id !== room.id && router.push(`/room/${r.id}`)}>
                         <div className={styles.roomName}>{r.emoji} {r.name}{r.id===room.id && <span style={{ marginLeft:6, fontSize:10, color:'var(--accent3)' }}>● {lang==='ja'?'入室中':'Here'}</span>}</div>
@@ -1305,7 +1569,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
 
                 {panel==='activity' && (
                   <div className={styles.notifList}>
-                    {notifications.map((n,i) => (
+                    {notificationsView.map((n,i) => (
                       <div key={i} className={styles.notifItem}>
                         <span>{n.icon}</span>
                         <div><div style={{ fontSize:11 }}>{n.text}</div><div style={{ fontSize:9, color:'var(--muted)', marginTop:2 }}>{n.time}</div></div>
@@ -1335,7 +1599,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                 {panel==='schedule' && (
                   <>
                     <button onClick={() => setShowScheduler(true)} style={{ width:'100%', padding:'9px', background:'var(--accent)', border:'none', borderRadius:8, color:'#fff', fontSize:12, cursor:'pointer', fontFamily:'inherit', marginBottom:10 }}>
-                      + セッションを予約する
+                      + {tr('セッションを予約する','Schedule a session')}
                     </button>
                     <TimelineCalendar
                       userId={profile.id}
@@ -1366,7 +1630,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                       const isSoon = diffMin > 0 && diffMin <= 10
                       const isPast = diffMin <= -s.duration_mins
                       const borderColor = isStarting ? 'var(--accent3)' : isSoon ? 'var(--warn)' : 'var(--border)'
-                      const badgeText = isStarting ? '🟢 進行中' : isSoon ? ('⏰ ' + diffMin + '分後') : isPast ? '終了' : fmtScheduled(s.scheduled_at)
+                      const badgeText = isStarting ? tr('🟢 進行中','🟢 Live') : isSoon ? ('⏰ ' + tr(diffMin + '分後', 'in ' + diffMin + 'm')) : isPast ? tr('終了','Ended') : fmtScheduled(s.scheduled_at)
                       const badgeColor = isStarting ? 'var(--accent3)' : isSoon ? 'var(--warn)' : isPast ? 'var(--muted)' : 'var(--muted2)'
                       const badgeBg = isStarting ? 'rgba(52,211,153,.12)' : isSoon ? 'rgba(245,158,11,.12)' : 'transparent'
                       return (
@@ -1378,17 +1642,17 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                             </span>
                           </div>
                           <div style={{ fontSize:11, color:'var(--muted)', marginBottom:4 }}>
-                            ⏱ {s.duration_mins}分
+                            ⏱ {s.duration_mins}{tr('分','m')}
                             {s.subject && <span> · 🎯 {s.subject}</span>}
                           </div>
                           <div style={{ fontSize:10, color:'var(--muted)', marginBottom:8 }}>
-                            主催: {(s.profiles as { display_name: string } | undefined)?.display_name ?? 'あなた'}
+                            {tr('主催','Host')}: {(s.profiles as { display_name: string } | undefined)?.display_name ?? tr('あなた','You')}
                           </div>
                           <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
                             {s.host_id !== profile.id && !isPast && (
                               <button onClick={() => joinSession(s.id)}
-                                style={{ padding:'5px 12px', background:'rgba(108,138,255,.12)', border:'1px solid rgba(108,138,255,.25)', borderRadius:6, color:'var(--accent)', fontSize:11, cursor:'pointer', fontFamily:'inherit' }}>
-                                ✋ 参加登録
+                                style={{ padding:'5px 12px', background:'rgba(125,149,255,.12)', border:'1px solid rgba(125,149,255,.25)', borderRadius:6, color:'var(--accent)', fontSize:11, cursor:'pointer', fontFamily:'inherit' }}>
+                                ✋ {tr('参加登録','Join')}
                               </button>
                             )}
                             {(isStarting || isSoon) && (
@@ -1406,21 +1670,28 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                                   )
                                   router.push('/room/' + sess.room_id)
                                 } else {
-                                  showToast('❌ ルーム情報が取得できませんでした')
+                                  showToast(tr('❌ ルーム情報が取得できませんでした','❌ Could not load the room'))
                                 }
                               }}
                                 style={{ padding:'5px 12px', background: isStarting ? 'var(--accent3)' : 'var(--warn)', border:'none', borderRadius:6, color:'#000', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
-                                {isStarting ? '🚀 専用ルームへ入室' : '📍 準備する'}
+                                {isStarting ? tr('🚀 会場の部屋へ入室','🚀 Enter room') : tr('📍 準備する','📍 Get ready')}
+                              </button>
+                            )}
+                            {s.host_id === profile.id && s.room_id && myPrivateRooms.some((r: any) => r.id === s.room_id) && !isPast && (
+                              <button onClick={() => copySessionInviteByRoom(s.room_id)}
+                                style={{ padding:'5px 10px', background:'rgba(125,149,255,.12)', border:'1px solid rgba(125,149,255,.25)', borderRadius:6, color:'var(--accent)', fontSize:11, cursor:'pointer', fontFamily:'inherit' }}>
+                                🔗 {tr('招待リンク','Invite link')}
                               </button>
                             )}
                             {s.host_id === profile.id && (
                               <button onClick={async () => {
-                                await (supabase as any).from('scheduled_sessions').delete().eq('id', s.id)
+                                if (!window.confirm(tr('この予約を削除しますか？','Delete this session?'))) return
+                                await fetch('/api/study-group', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: s.id }) }).catch(() => {})
                                 fetchSessions()
-                                showToast('🗑 予約を削除しました')
+                                showToast(tr('🗑 予約を削除しました','🗑 Session deleted'))
                               }}
                                 style={{ padding:'5px 10px', background:'transparent', border:'1px solid var(--border)', borderRadius:6, color:'var(--muted)', fontSize:11, cursor:'pointer', fontFamily:'inherit' }}>
-                                🗑 削除
+                                🗑 {tr('削除','Delete')}
                               </button>
                             )}
                           </div>
@@ -1440,16 +1711,25 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
       <div className={styles.mobContent}>
         <MobileScreens
           activeScreen={activeMobScreen} profile={profile} room={room} allRooms={allRooms}
-          timer={timer} members={displayMembers} friends={displayFriends} pendingIn={pendingIn}
+          timer={timer} members={visibleMembers} friends={displayFriends} pendingIn={pendingIn}
+          myPrivateRooms={myPrivateRooms}
+          shareCard={<ShareCard lang={lang} displayName={profile.display_name} todaySeconds={todaySeconds} pomosToday={pomosToday} streak={streak} week={weeklyStats as any} onToast={showToast}/>}
+          studyTogether={<><StudyTogether lang={lang} room={room} userId={profile.id} displayName={profile.display_name} myPrivateRooms={myPrivateRooms} onToast={showToast}/><BlockedList lang={lang} blocked={blocked} onUnblock={handleUnblock}/></>}
+          renderFriendPresence={(fid: string, name: string) => (
+            <FriendPresence status={friendStatus(fid)} lang={lang} onJoin={joinFriendRoom}
+              onInvite={() => inviteFriend(fid, name)} onAskInvite={() => askInvite(fid, name)}/>
+          )}
           unreadCounts={unreadCounts} tasks={tasks} localStream={localStream} remoteStreams={remoteStreams}
           cameraOn={cameraOn} bgmPlaying={bgmPlaying} volume={volume} bgmGainRef={bgmGainRef} ambience={ambience}
-          notifications={notifications} weeklyStats={weeklyStats} currentTask={currentTask}
+          notifications={notificationsView} weeklyStats={weeklyStats} currentTask={currentTask}
           onToggleCamera={() => setCameraOn(v => !v)}
           onAddTask={addTask} onCompleteTask={completeTask} onDeleteTask={deleteTask}
           onOpenChat={(fid) => setChatFriendId(fid)}
           onBlock={(uid,name) => setBlockModal({ userId:uid, name })}
           onReport={(uid,name) => setReportModal({ userId:uid, name })}
-          onAcceptFriend={acceptFriendRequest}
+          onViewProfile={setViewUserId}
+          onAcceptFriend={(id: string) => acceptRequest(id, (pendingIn.find((r: any) => r.id === id) as any)?.profiles?.display_name ?? '')}
+          onDeclineFriend={declineRequest}
           onToggleBgm={toggleBgm} onSetVolume={setVolume}
           onJoinRoom={(rid) => router.push(`/room/${rid}`)}
           onLeaveRoom={leaveRoom}
@@ -1482,20 +1762,25 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
             </div>
             <div>
               <div style={{ fontWeight:600, fontSize:14 }}>{chatFriendProfile.display_name}</div>
-              <div style={{ fontSize:11, color:'var(--accent3)' }}>● オンライン</div>
+              <div style={{ fontSize:11, color:'var(--muted)' }}>{friendStatus(chatFriendId).label}</div>
             </div>
           </div>
           <div className={styles.mobChatMsgs}>
             {chatMessages.map((msg: any) => (
               <div key={msg.id} className={`${styles.msg} ${msg.sender_id===profile.id?styles.msgMe:styles.msgThem}`}>
-                <div className={styles.msgBubble}>{msg.content}</div>
+                <div className={styles.msgBubble}><ChatBubbleContent content={msg.content} mine={msg.sender_id===profile.id} lang={lang}/></div>
                 <div className={styles.msgTime}>{new Date(msg.created_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</div>
               </div>
             ))}
             <div ref={chatEndRef}/>
           </div>
-          <div className={styles.mobChatInputRow}>
-            <input className={styles.chatInput} value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => e.key==='Enter'&&handleSendMsg()} placeholder={T.messagePlaceholder}/>
+          {chatMessages.length < 2 && (
+                <div className={styles.chatHints} aria-label={lang==='ja'?'話しかけのヒント':'Message ideas'}>
+                  {(lang==='ja'?CHAT_HINTS_JA:CHAT_HINTS_EN).map(h => <button key={h} type="button" onClick={() => setChatInput(h)}>{h}</button>)}
+                </div>
+              )}
+              <div className={styles.mobChatInputRow}>
+            <input className={styles.chatInput} value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => e.key==='Enter'&&handleSendMsg()} placeholder={chatFriendId && blockedIds.has(chatFriendId) ? (lang==='ja'?'ブロック中のため送れません':'Blocked') : T.messagePlaceholder} disabled={!!chatFriendId && blockedIds.has(chatFriendId)}/>
             <button className={styles.chatSend} onClick={handleSendMsg}>{T.send}</button>
           </div>
         </div>
@@ -1503,15 +1788,15 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
 
       {/* MOBILE BOTTOM NAV */}
       <nav className={styles.bottomNav}>
-        {(['timer','room','friends','stats'] as const).map((screen,i) => {
+        {(['room','timer','friends','stats'] as const).map((screen,i) => {
           const hasNotif = screen==='friends' && (pendingIn.length>0 || Object.values(unreadCounts).some(c=>c>0))
           return (
             <button key={screen} className={`${styles.bnavBtn} ${activeMobScreen===screen?styles.bnavBtnActive:''}`} onClick={() => setActiveMobScreen(screen)}>
               <div className={styles.bnavIcon} style={{ position:'relative' }}>
-                <Icon name={(['timer','camera','users','stats'] as const)[i]} size={19}/>
+                <Icon name={(['camera','timer','users','stats'] as const)[i]} size={19}/>
                 {hasNotif && <span style={{ position:'absolute', top:-2, right:-2, width:8, height:8, borderRadius:'50%', background:'var(--accent)', boxShadow:'0 0 0 2px var(--bg)' }}/>}
               </div>
-              <span className={styles.bnavLbl}>{lang==='ja'?['タイマー','ルーム','フレンド','統計'][i]:['Timer','Room','Friends','Stats'][i]}</span>
+              <span className={styles.bnavLbl}>{lang==='ja'?['ルーム','タイマー','フレンド','記録'][i]:['Room','Timer','Friends','Stats'][i]}</span>
             </button>
           )
         })}

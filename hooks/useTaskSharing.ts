@@ -30,6 +30,8 @@ export function useTaskSharing(userId: string, roomId: string) {
   const [sharedTasks, setSharedTasks] = useState<SharedTask[]>([])
   const [studyPairs, setStudyPairs] = useState<StudyPair[]>([])
   const [pendingPairRequests, setPendingPairRequests] = useState<StudyPair[]>([])
+  // 同じ画面に TaskPanel が 2 つ（PC 用とスマホ用）あってもチャンネルがぶつからないように、呼び出しごとに別名にする
+  const [channelSuffix] = useState(() => Math.random().toString(36).slice(2, 10))
 
   // 共有タスクを取得
   const fetchSharedTasks = useCallback(async () => {
@@ -148,7 +150,7 @@ export function useTaskSharing(userId: string, roomId: string) {
 
     // Realtime: タスク更新を監視
     const taskChannel = supabase
-      .channel(`shared_tasks:${roomId}`)
+      .channel(`shared_tasks:${roomId}:${channelSuffix}`)
       .on('postgres_changes', {
         event: '*', schema: 'public', table: 'tasks',
       }, () => fetchSharedTasks())
@@ -156,7 +158,7 @@ export function useTaskSharing(userId: string, roomId: string) {
 
     // Realtime: ペアリクエストを監視
     const pairChannel = supabase
-      .channel(`study_pairs:${userId}`)
+      .channel(`study_pairs:${userId}:${channelSuffix}`)
       .on('postgres_changes', {
         event: '*', schema: 'public', table: 'study_pairs',
         filter: `user_a=eq.${userId}`,

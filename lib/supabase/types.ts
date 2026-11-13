@@ -14,6 +14,7 @@ export type Profile = {
   study_streak: number
   total_study_seconds: number
   subject: string | null
+  bio?: string | null
   last_study_date: string | null
 }
 

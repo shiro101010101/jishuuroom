@@ -1,13 +1,12 @@
 import { auth, signOut } from '@/auth'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 
 export default async function BannedPage() {
   const session = await auth()
   if (!session?.user) redirect('/')
 
-  const supabase = await createClient()
-  const { data } = await supabase
+  const { data } = await createAdminClient()
     .from('profiles')
     .select('ban_reason')
     .eq('id', session.user.id)

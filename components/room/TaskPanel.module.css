@@ -11,7 +11,7 @@
 .pairActiveDot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent3); animation: pulse 2s infinite; flex-shrink: 0; }
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
 
-.pairAvatar { width: 28px; height: 28px; border-radius: 50%; background: rgba(108,138,255,.15); color: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; overflow: hidden; }
+.pairAvatar { width: 28px; height: 28px; border-radius: 50%; background: rgba(125,149,255,.15); color: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; overflow: hidden; }
 .pairInfo { flex: 1; min-width: 0; }
 .pairName { font-size: 12px; font-weight: 500; }
 .pairMeta { font-size: 10px; color: var(--muted); margin-top: 1px; }
@@ -59,11 +59,11 @@
 .shareToggle { display: flex; gap: 3px; flex-shrink: 0; }
 .shareBtn { width: 26px; height: 26px; border-radius: 6px; border: 1px solid var(--border); background: transparent; cursor: pointer; font-size: 13px; display: flex; align-items: center; justify-content: center; transition: .15s; opacity: .6; }
 .shareBtn:hover { opacity: 1; background: var(--bg); }
-.shareBtnActive { opacity: 1; background: rgba(108,138,255,.15); border-color: var(--accent); box-shadow: 0 0 0 2px rgba(108,138,255,.2); }
+.shareBtnActive { opacity: 1; background: rgba(125,149,255,.15); border-color: var(--accent); box-shadow: 0 0 0 2px rgba(125,149,255,.2); }
 
 /* Shared tasks */
-.sharedTaskItem { background: rgba(108,138,255,.04); border-color: rgba(108,138,255,.15); }
-.sharedAvatar { width: 20px; height: 20px; border-radius: 50%; background: rgba(108,138,255,.15); color: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; flex-shrink: 0; overflow: hidden; }
+.sharedTaskItem { background: rgba(125,149,255,.04); border-color: rgba(125,149,255,.15); }
+.sharedAvatar { width: 20px; height: 20px; border-radius: 50%; background: rgba(125,149,255,.15); color: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; flex-shrink: 0; overflow: hidden; }
 .sharedContent { flex: 1; min-width: 0; }
 .sharedBy { font-size: 9px; color: var(--muted); margin-top: 1px; display: flex; align-items: center; gap: 4px; }
 .scopeBadge { font-size: 9px; color: var(--accent2); }

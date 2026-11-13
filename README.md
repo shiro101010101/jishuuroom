@@ -24,6 +24,10 @@ npm install
    1. `supabase/migration_missing_objects.sql`（今日の一言・リアクション・ピン・予約など）
    2. `supabase/migration_ranking.sql`（勉強時間ランキング）
    3. `supabase/migration_security.sql`（RLS の強化。**必ず STEP 3 の JWT Secret を設定・デプロイしてから実行**）
+   4. `supabase/migration_profile.sql`（自己紹介とプロフィール画像。画像の保存先 `avatars` バケットも作られます）
+   5. `supabase/migration_friend_rooms.sql`（友達だけの部屋。招待リンクを開いた人・招待されたフレンドが入れるようになります）
+   6. `migration_hardening.sql` → `migration_friendship_guard.sql` → `migration_blocks.sql` → `migration_room_security.sql` → `migration_privacy.sql` → `migration_least_privilege.sql`（セキュリティ強化）
+   7. Supabase ダッシュボードの **Realtime → Settings** で「Allow public access」を OFF にする（オンライン表示を非公開チャンネルだけにする）
 
 ---
 
@@ -208,3 +212,74 @@ npx supabase init && npx supabase start      # ローカルの Supabase を起�
 # supabase/ の SQL を README の順番で流す（psql postgresql://postgres:postgres@127.0.0.1:54322/postgres）
 npm run dev
 ```
+
+---
+
+## ✅ リリース前・変更後のチェック（必ず実行）
+
+```bash
+npm run check          # 型チェック + 画面チェック（スマホ/タブレット/PC × 主要ページ）
+BASE_URL=https://本番のURL npm run check:ui   # 公開中のサイトをチェック
+```
+
+- 画面チェックは「はみ出し・エラー・画像切れ・押しにくいボタン・セキュリティヘッダー・ログインなしで入れてはいけないページ」を自動で調べ、`checks/screenshots/` に全画面を保存します。不合格が1件でもあれば失敗になります。
+- データベースのセキュリティは次の 2 本を SQL Editor で実行します。**両方合格するまでリリースしない**こと。
+  1. `supabase/tests/security_audit.sql`（総点検）… 全テーブル・全ポリシー・全関数を機械的に調べます。「✅ 問題なし」の 1 行だけなら合格。
+  2. `supabase/tests/security_test.sql`（攻撃テスト）… 3 人のテストユーザーで実際に攻撃を試します。`FAIL` が 1 行もなければ合格（テスト用データは最後に自動で削除）。
+- テーブル・関数・ポリシーを追加したら、必ず総点検を実行してください。
+- DB の SQL は `migration_friend_rooms.sql` → `migration_hardening.sql` → `migration_friendship_guard.sql` → `migration_blocks.sql` → `migration_room_security.sql` → `migration_privacy.sql` → `migration_least_privilege.sql` の順に実行します。
+
+## 目標の試験・みんなで勉強タイム・試験別ページ
+
+- **目標の試験**（`profiles.goal_exam`）：一覧は `lib/exams.ts`。ロビーの初回カード「あなたの目標は？」で選び、`POST /api/profile/goal`（service_role）で保存。公開列（プロフィール・ランキングに表示）。DB には `supabase/migration_exam.sql` を `migration_least_privilege.sql` の後に実行し、`supabase/tests/security_audit.sql` が「✅ 問題なし」になることを確認する。
+- **同じ目標ランキング**：`/api/leaderboard?scope=exam`。同じ `goal_exam` の人（最大 2000 人）で既存の `get_leaderboard` を呼ぶ。目標が未設定ならランキングの「同じ目標」タブは出ない。
+- **みんなで勉強タイム**：毎日 21:00 / 23:00（日本時間）。ロビーにカウントダウンを表示し、開始から 50 分間は「いま開催中」。会場は自由学習ルーム（`components/lobby/CommunitySession.tsx`）。
+- **試験別ランディングページ**：`/exam/[slug]`（ログイン不要・静的生成・FAQPage の構造化データつき）。文章は `lib/examPages.ts`。sitemap にも掲載。
+
+---
+
+## 🔔 通知（Web Push）・アクセス解析・紹介リンク
+
+### 環境変数（Vercel の Environment Variables に設定）
+
+| 変数 | 内容 |
+|---|---|
+| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | VAPID 公開鍵（`npx web-push generate-vapid-keys` で生成した Public Key） |
+| `VAPID_PRIVATE_KEY` | VAPID 秘密鍵（同じコマンドの Private Key。**絶対に公開しない**） |
+| `VAPID_SUBJECT` | 連絡先。`mailto:you@example.com` の形式 |
+| `CRON_SECRET` | 定期実行（毎日 21:00 JST の通知）用の合言葉。`openssl rand -hex 32` などで生成 |
+
+- VAPID の 3 つが未設定なら、通知機能は自動的にオフになる（カードも表示されない）
+- 紹介コードは `NEXTAUTH_SECRET` から作るので、これを変えると全員の紹介コードが変わる
+- DB には `supabase/migration_push_referral.sql` を流し、そのあと `supabase/tests/security_audit.sql` が「✅ 問題なし」になることを確認する
+
+### 仕組み
+
+- **連続記録のお知らせ**：`vercel.json` の Cron が毎日 12:00 UTC（21:00 JST）に `/api/cron/reminders` を呼ぶ。
+  昨日は勉強したのに今日はまだの人へ「🔥 連続◯日、今日も少しだけ」を 1 日 1 回まで送る。無効になった購読（404/410）は自動で削除
+- **iPhone / iPad**：ホーム画面に追加したアプリ（iOS 16.4 以降）でだけ通知を受け取れる。それ以外ではカードに案内を表示
+- **アクセス解析**：Vercel Web Analytics（Cookie なし）。Vercel のダッシュボードで Analytics を有効にする。
+  URL の招待コード・部屋 ID・クエリは送信前に伏せ、イベントには個人情報を載せない（`lib/analytics.ts`）
+- **紹介リンク**：`/r/<コード>` または `/?r=<コード>` で来た人の紹介コードを 30 日間 Cookie に保存し、新規登録時に `profiles.referred_code` に記録する。
+  自分のコードとリンクは `GET /api/me/referral` で取得できる
+
+## 勉強会・ピン・プレミアムの設定（2026-11 追加）
+
+### 1. Supabase の SQL Editor で、この順に実行
+1. `supabase/migration_study_groups.sql` … 勉強会のくり返し・招待
+2. `supabase/migration_session_cron.sql` … 開始前通知を 5 分おきに実行（URL と `CRON_SECRET` を書き換えてから）
+3. `supabase/migration_rooms_pins.sql` … 部屋を Room 1〜3 に整理・定員なし・ピン（理由／ひみつ）・マッチ・性別／Instagram・ブロック時の関係削除
+4. `supabase/migration_premium.sql` … プレミアム（課金状態・申し込み時の同意の記録）
+5. 最後に `supabase/tests/security_audit.sql` で「✅ 問題なし」を確認
+
+### 2. Stripe（プレミアム）
+1. Stripe で商品「プレミアム」を作り、価格を 2 つ作る：月額 480円・年額 3,800円（定期支払い・JPY）
+2. Webhook を追加：URL `https://<本番URL>/api/billing/webhook`、イベント `checkout.session.completed` `customer.subscription.created` `customer.subscription.updated` `customer.subscription.deleted`
+3. 「カスタマーポータル」を有効にする（解約・支払い方法の変更をオン）
+4. Vercel の環境変数に追加：`STRIPE_SECRET_KEY` `STRIPE_WEBHOOK_SECRET` `STRIPE_PRICE_MONTHLY` `STRIPE_PRICE_YEARLY`
+
+### 3. 特定商取引法に基づく表記（/tokushoho）
+Vercel の環境変数に `LEGAL_SELLER_NAME`（販売事業者名）・`LEGAL_EMAIL` を必ず入れる。任意で `LEGAL_MANAGER_NAME` `LEGAL_ADDRESS` `LEGAL_PHONE`（未設定なら「請求があれば遅滞なく開示」と表示）。
+`LEGAL_SELLER_NAME` と `LEGAL_EMAIL`、Stripe の 3 つがそろうまで、申し込みボタンは出ません（「準備中」と表示）。
+
+価格を変えるときは Stripe の価格と `lib/premium.ts` の `PRICES` の両方を変えること。

@@ -18,7 +18,11 @@ export type Pin = {
   pinner_id: string
   pinned_id: string
   created_at: string
+  reason?: string | null
+  is_secret?: boolean
 }
+
+export type PinResult = { pinned: boolean; mutual?: boolean; firstMatch?: boolean; revealedSecret?: boolean; error?: string; upgrade?: boolean }
 
 export type DailyMessage = {
   id: string
@@ -36,6 +40,8 @@ export function useInteractions(userId: string, roomId: string) {
   const supabase = createClient()
   const [reactions, setReactions] = useState<Reaction[]>([])
   const [pins, setPins] = useState<Pin[]>([])
+  // 自分へのピン（ひみつのピンは RLS でマッチするまで見えない）。マッチ（ペア）の判定に使う
+  const [pinsToMe, setPinsToMe] = useState<Pin[]>([])
   const [dailyMessages, setDailyMessages] = useState<DailyMessage[]>([])
   const [myMessage, setMyMessage] = useState('')
   const [reactionCooldowns, setReactionCooldowns] = useState<Record<string, Date>>({})
@@ -58,6 +64,8 @@ export function useInteractions(userId: string, roomId: string) {
       .select('*')
       .eq('pinner_id', userId)
     if (data) setPins(data)
+    const { data: toMe } = await supabase.from('pins').select('*').eq('pinned_id', userId)
+    if (toMe) setPinsToMe(toMe)
   }, [userId])
 
   const fetchDailyMessages = useCallback(async () => {
@@ -70,7 +78,7 @@ export function useInteractions(userId: string, roomId: string) {
     if (data) setDailyMessages(data as DailyMessage[])
 
     // 自分のメッセージを取得
-    const mine = data?.find(m => m.user_id === userId)
+    const mine = (data as any[] | null)?.find((m: any) => m.user_id === userId)
     if (mine) setMyMessage(mine.content)
   }, [roomId, userId])
 
@@ -103,6 +111,7 @@ export function useInteractions(userId: string, roomId: string) {
             .eq('pinner_id', userId)
             .eq('pinned_id', pinner_id)
             .maybeSingle()
+          fetchPins()
           if (data) {
             // Get pinner name
             const { data: profile } = await supabase
@@ -111,8 +120,8 @@ export function useInteractions(userId: string, roomId: string) {
               .eq('id', pinner_id)
               .single()
             if (profile) {
-              setMutualPinNotif(`📌 ${profile.display_name}さんとお互いにピンしました！`)
-              setTimeout(() => setMutualPinNotif(null), 5000)
+              setMutualPinNotif(`🤝 ${(profile as any).display_name}さんとマッチしました！勉強仲間になりました`)
+              setTimeout(() => setMutualPinNotif(null), 6000)
             }
           }
         })
@@ -150,25 +159,31 @@ export function useInteractions(userId: string, roomId: string) {
     return result
   }, [roomId, reactionCooldowns])
 
-  // ── Toggle pin ──
-  const togglePin = useCallback(async (targetId: string) => {
-    const { data, error } = await (supabase as any).rpc('toggle_pin', { p_target_id: targetId })
-    if (error) return
-    const result = data as { pinned: boolean; mutual: boolean }
-    if (result.mutual) {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('display_name')
-        .eq('id', targetId)
-        .single()
-      if (profile) {
-        setMutualPinNotif(`📌 ${profile.display_name}さんとお互いにピンしました！`)
-        setTimeout(() => setMutualPinNotif(null), 5000)
+  // ── Pin / unpin（サーバー /api/pins が理由・ひみつ・マッチ通知を扱う） ──
+  const togglePin = useCallback(async (targetId: string, opts?: { reason?: string; secret?: boolean; forceUpdate?: boolean }): Promise<PinResult> => {
+    const pinnedNow = pins.some(p => p.pinned_id === targetId)
+    const unpin = pinnedNow && !opts?.forceUpdate
+    try {
+      const res = await fetch('/api/pins', {
+        method: unpin ? 'DELETE' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(unpin ? { targetId } : { targetId, reason: opts?.reason ?? '', secret: !!opts?.secret }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) return { pinned: pinnedNow, error: data.error ?? 'ピンできませんでした', upgrade: !!data.upgrade }
+      if (data.mutual && !unpin) {
+        const name = data.targetName ?? ''
+        setMutualPinNotif(data.revealedSecret
+          ? `🤫→🤝 実は${name}さんも、ひみつであなたをピンしていました！マッチ成立`
+          : `🤝 ${name}さんとマッチしました！勉強仲間になりました`)
+        setTimeout(() => setMutualPinNotif(null), 6000)
       }
+      await fetchPins()
+      return data as PinResult
+    } catch {
+      return { pinned: pinnedNow, error: '通信できませんでした' }
     }
-    fetchPins()
-    return result
-  }, [fetchPins])
+  }, [pins, fetchPins])
 
   // ── Save daily message ──
   const saveDailyMessage = useCallback(async (content: string) => {
@@ -197,12 +212,17 @@ export function useInteractions(userId: string, roomId: string) {
   }, [reactionCooldowns])
 
   const pinnedUserIds = pins.map(p => p.pinned_id)
+  const getMyPin = useCallback((targetId: string) => pins.find(p => p.pinned_id === targetId) ?? null, [pins])
+  /** お互いにピンしている（マッチ＝ペア）相手 */
+  const matchedIds = new Set(pinsToMe.filter(p => pinnedUserIds.includes(p.pinner_id)).map(p => p.pinner_id))
+  /** 自分をピンしている人（公開ピンとマッチ）。理由つき */
+  const pinFrom = useCallback((targetId: string) => pinsToMe.find(p => p.pinner_id === targetId) ?? null, [pinsToMe])
 
   return {
     reactions, pins, dailyMessages, myMessage,
     showPinnedOnly, setShowPinnedOnly,
     mutualPinNotif,
-    pinnedUserIds,
+    pinnedUserIds, matchedIds, getMyPin, pinFrom,
     REACTION_EMOJIS,
     sendReaction, togglePin, saveDailyMessage,
     isPinned, getReactionsFor, getCooldownFor,

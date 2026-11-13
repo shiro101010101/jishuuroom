@@ -1,0 +1,56 @@
+.card { padding: 12px; margin-bottom: 12px; border-radius: 14px; background: rgba(125,149,255,.07); border: 1px solid rgba(125,149,255,.22); display: flex; flex-direction: column; gap: 8px; }
+.title { font-size: 13px; font-weight: 700; color: var(--text); }
+.sub { font-size: 12px; color: var(--muted); line-height: 1.5; }
+.linkRow { display: flex; gap: 6px; min-width: 0; }
+.linkInput { flex: 1; min-width: 0; min-height: 36px; padding: 7px 9px; font-size: 12px; font-family: inherit; color: var(--text); background: rgba(var(--fg),.05); border: 1px solid rgba(var(--fg),.1); border-radius: 8px; outline: none; }
+.linkInput:focus { border-color: rgba(125,149,255,.6); }
+.shareRow { display: flex; flex-wrap: wrap; gap: 6px; }
+.btn { min-height: 36px; padding: 7px 12px; font-size: 12px; font-weight: 600; font-family: inherit; color: var(--text); background: rgba(var(--fg),.06); border: 1px solid rgba(var(--fg),.12); border-radius: 8px; cursor: pointer; text-decoration: none; white-space: nowrap; transition: background .15s, border-color .15s; }
+.btn:hover { border-color: rgba(var(--fg),.25); }
+.btn:disabled { opacity: .6; cursor: default; }
+.primary { background: rgba(125,149,255,.85); border-color: transparent; color: #fff; }
+.primary:hover { background: rgba(125,149,255,1); }
+.line { background: #06c755; border-color: transparent; color: #fff; }
+.ghost { background: transparent; color: var(--muted); }
+.wide { width: 100%; padding: 9px; font-size: 12px; }
+.createBox { display: flex; flex-direction: column; gap: 6px; }
+.myRooms { display: flex; flex-direction: column; gap: 4px; padding-top: 4px; border-top: 1px solid rgba(var(--fg),.08); }
+.myRoom { display: flex; align-items: center; gap: 6px; }
+.myRoomName { flex: 1; min-width: 0; text-align: left; padding: 6px 8px; font-size: 12px; font-family: inherit; color: var(--text); background: rgba(var(--fg),.04); border: 1px solid rgba(var(--fg),.08); border-radius: 8px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.myRoomName:hover { border-color: rgba(125,149,255,.45); }
+.iconBtn { padding: 4px 6px; font-size: 12px; background: transparent; border: none; cursor: pointer; opacity: .7; }
+.iconBtn:hover { opacity: 1; }
+
+/* フレンドの居場所 */
+.status { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); min-width: 0; }
+.statusText { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; background: var(--muted2); }
+.here .dot { background: var(--accent); }
+.studying .dot { background: var(--accent3); }
+.online .dot { background: var(--warn); }
+.offline .dot { background: rgba(var(--fg),.2); }
+.friendBtns { display: flex; gap: 5px; margin-top: 5px; flex-wrap: wrap; }
+.mini { min-height: 32px; padding: 4px 12px; font-size: 12px; font-weight: 600; font-family: inherit; border-radius: 6px; cursor: pointer; border: 1px solid rgba(var(--fg),.12); background: rgba(var(--fg),.05); color: var(--text); white-space: nowrap; }
+.mini:hover { border-color: rgba(var(--fg),.28); }
+.miniJoin { background: var(--accent3); border-color: transparent; color: #04140d; }
+.mini:disabled { opacity: .5; cursor: default; }
+
+/* チャット内の招待 */
+.inviteMsg { display: flex; flex-direction: column; gap: 6px; white-space: pre-wrap; }
+.inviteJoin { align-self: flex-start; padding: 5px 12px; font-size: 11px; font-weight: 700; font-family: inherit; color: #04140d; background: var(--accent3); border: none; border-radius: 6px; cursor: pointer; }
+
+/* 招待が届いたときのお知らせ */
+.banner { position: fixed; left: 50%; bottom: calc(110px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 1200; width: min(420px, calc(100vw - 32px)); padding: 12px 14px; border-radius: 14px; background: var(--glass-strong); border: 1px solid rgba(125,149,255,.45); box-shadow: var(--glass-hi), 0 24px 60px rgba(var(--shadow), calc(.5 * var(--sk))); backdrop-filter: blur(40px) saturate(160%); -webkit-backdrop-filter: blur(40px) saturate(160%); display: flex; flex-direction: column; gap: 8px; color: var(--text); }
+.bannerText { font-size: 12px; line-height: 1.5; white-space: pre-wrap; }
+.bannerBtns { display: flex; gap: 6px; justify-content: flex-end; }
+
+/* ブロック中のユーザー */
+.blocked { margin-top: 12px; padding: 10px 12px; border-radius: 12px; background: rgba(var(--fg),.03); border: 1px solid rgba(var(--fg),.08); font-size: 12px; display: flex; flex-direction: column; gap: 6px; }
+.blocked summary { cursor: pointer; color: var(--muted2); }
+.blocked[open] summary { margin-bottom: 6px; }
+.blockedName { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+
+/* 部屋の管理（作成者だけ） */
+.manage { display: flex; flex-direction: column; gap: 8px; padding-top: 6px; border-top: 1px solid rgba(var(--fg),.08); }
+.manageBody { display: flex; flex-direction: column; gap: 6px; }
+.danger { color: var(--red); border-color: rgba(248,113,113,.4); background: transparent; }

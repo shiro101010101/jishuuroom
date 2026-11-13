@@ -14,7 +14,7 @@
   --red: #f08a8a;
   --red2: #e35d5d;
   --text: #e4e7ee;
-  --muted: #656e80;
+  --muted: #7f889b;   /* 背景に対して 4.5:1 以上 */
   --muted2: #98a1b3;
   --ok: #8fe3c6;
   --ok-rgb: 143,227,198;
@@ -56,7 +56,7 @@
   --red: #e05656;
   --red2: #dc4b4b;
   --text: #161b2a;
-  --muted: #8790a4;
+  --muted: #6b7489;   /* 明るい背景に対して 4.5:1 以上 */
   --muted2: #4f5970;
   --ok: #12a07a;
   --ok-rgb: 18,160,122;
@@ -154,6 +154,8 @@ html::after {
   opacity: .035;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
+/* 自習室で図書館の背景を出しているときは、星と光のぼかしを消す（背景画像と重ならないように） */
+:root[data-library]::before, :root[data-library] body::before, :root[data-library] body::after { display: none; }
 @keyframes drift { to { transform: translate(-6vmax, 5vmax) scale(1.06); } }
 @keyframes breathe { from { opacity: .75; } to { opacity: 1; } }
 @keyframes twinkle { from { filter: brightness(.7); } to { filter: brightness(1.15); } }
@@ -169,3 +171,13 @@ html::after {
 a { color: inherit; text-decoration: none; }
 button { font-family: inherit; cursor: pointer; }
 input, textarea { font-family: inherit; color: inherit; }
+
+
+/* ── アクセシビリティ・操作感（全画面共通） ── */
+/* キーボード操作中の位置がはっきり見えるように */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+/* 押したときの手応え */
+button:not(:disabled):active, a[role="button"]:active { transform: scale(.97); }
+/* iPhone で入力欄を押したときに勝手に拡大されないように（16px 未満だと拡大される） */
+@media (max-width: 768px) { input, textarea, select { font-size: 16px !important; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }

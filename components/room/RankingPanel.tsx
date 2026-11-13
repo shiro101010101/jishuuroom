@@ -1,9 +1,10 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
 import styles from './RankingPanel.module.css'
+import { examLabel } from '@/lib/exams'
 
 type Period = 'day' | 'week' | 'month'
-type Scope = 'global' | 'friends' | 'room'
+type Scope = 'global' | 'friends' | 'room' | 'exam'
 type Row = { user_id: string; display_name: string; avatar_url: string | null; study_streak: number; total_seconds: number; rank: number }
 type Me = { total_seconds: number; rank: number | null; participants: number } | null
 
@@ -29,6 +30,8 @@ export default function RankingPanel({ userId, roomId, lang = 'ja', refreshKey =
   const [me, setMe] = useState<Me>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // 自分の目標（サーバーの応答から分かる）。無ければ「同じ目標」タブは出さない
+  const [myGoal, setMyGoal] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
@@ -37,6 +40,9 @@ export default function RankingPanel({ userId, roomId, lang = 'ja', refreshKey =
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
       setRows(json.rows); setMe(json.me)
+      const goal: string | null = json.myGoal ?? null
+      setMyGoal(goal)
+      if (scope === 'exam' && !goal) setScope('global')
     } catch (e: any) {
       setError(e?.message || (ja ? '読み込みに失敗しました' : 'Failed to load'))
     } finally { setLoading(false) }
@@ -59,12 +65,15 @@ export default function RankingPanel({ userId, roomId, lang = 'ja', refreshKey =
         ))}
       </div>
       <div className={styles.seg}>
-        {(['global', 'friends', 'room'] as const).map(s => (
+        {(['global', 'friends', 'room', 'exam'] as const).filter(s => s !== 'exam' || myGoal).map(s => (
           <button key={s} className={scope === s ? styles.segOn : ''} onClick={() => setScope(s)}>
-            {ja ? { global: '全体', friends: 'フレンド', room: 'ルーム' }[s] : { global: 'Global', friends: 'Friends', room: 'Room' }[s]}
+            {ja ? { global: '全体', friends: 'フレンド', room: 'ルーム', exam: '同じ目標' }[s] : { global: 'Global', friends: 'Friends', room: 'Room', exam: 'My goal' }[s]}
           </button>
         ))}
       </div>
+      {scope === 'exam' && myGoal && (
+        <div className={styles.goalNote}>{ja ? `目標「${examLabel(myGoal)}」の仲間で集計` : `People aiming for ${examLabel(myGoal)}`}</div>
+      )}
 
       {/* 自分の順位 */}
       <div className={styles.meCard}>

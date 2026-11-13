@@ -3,7 +3,8 @@
 // これで RLS の auth.uid() が本人の ID になり、他人のデータに触れなくなる。
 import { createHmac } from 'node:crypto'
 
-export const SUPABASE_TOKEN_TTL_SEC = 60 * 60
+// 短めにして、BAN されたユーザーが古いトークンで操作し続けられる時間を最大 15 分にする
+export const SUPABASE_TOKEN_TTL_SEC = 15 * 60
 
 const b64url = (input: Buffer | string) =>
   Buffer.from(input).toString('base64').replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_')
