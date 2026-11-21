@@ -53,10 +53,8 @@ export async function POST(request: Request) {
 
   // 生年月日は、一度でも契約したことがあれば変えられない（変えたいときはお問い合わせ）。年齢を偽って取り消し対策をすり抜けないように
   // （決済しないまま終わった申し込みの入力では固定しない。打ち間違いで止まらないように）
-  const { data: subRow } = await admin.from('subscriptions').select('stripe_subscription_id').eq('user_id', userId).maybeSingle()
-  const { data: firstConsent } = subRow?.stripe_subscription_id
-    ? await admin.from('billing_consents').select('birth_date').eq('user_id', userId).order('created_at', { ascending: true }).limit(1).maybeSingle()
-    : { data: null }
+  const { data: firstConsent } = await admin.from('billing_consents').select('birth_date')
+    .eq('user_id', userId).eq('confirmed', true).order('created_at', { ascending: true }).limit(1).maybeSingle()
   if (firstConsent && firstConsent.birth_date !== String(body.birthDate)) {
     return bad('生年月日が以前の申し込みと違います。変更が必要な場合はお問い合わせください')
   }
@@ -83,10 +81,10 @@ export async function POST(request: Request) {
   } catch { return bad('決済の準備ができませんでした。時間をおいてもう一度お試しください', 502) }
 
   // 同意の記録（後から確認できるように）。テーブルが無いときは申し込ませない
-  const { error: consentErr } = await admin.from('billing_consents').insert({
+  const { data: consent, error: consentErr } = await admin.from('billing_consents').insert({
     user_id: userId, birth_date: String(body.birthDate), is_minor: minor, guardian_consent: minor ? true : null, plan_interval: interval,
-  })
-  if (consentErr) { console.error('billing consent error:', consentErr); return bad('申し込みの準備ができていません（データベースの更新が必要です）', 500) }
+  }).select('id').single()
+  if (consentErr || !consent) { console.error('billing consent error:', consentErr); return bad('申し込みの準備ができていません（データベースの更新が必要です）', 500) }
 
 
   const origin = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') || new URL(request.url).origin
@@ -105,7 +103,7 @@ export async function POST(request: Request) {
       custom_text: { submit: { message: `自動更新の定期契約です。決済の完了後すぐにプレミアムを使えます。${interval === 'yearly' ? '1年' : '1か月'}ごとに¥${(interval === 'yearly' ? PRICES.yearly.yen : PRICES.monthly.yen).toLocaleString()}（税込）を自動で請求します。解約は${SITE.name}の「プレミアム」→「お支払いの管理・解約」から、次回更新日の前までにいつでもできます。解約後も更新日までは使えます。お支払い済みの料金の返金・日割りはありません（法令で認められる場合を除く）。` } },
       // Stripe ダッシュボードに利用規約の URL を登録したら STRIPE_REQUIRE_TOS=1 にする（未登録だとエラーになるため）
       ...(process.env.STRIPE_REQUIRE_TOS === '1' ? { consent_collection: { terms_of_service: 'required' } } : {}),
-      metadata: { user_id: userId },
+      metadata: { user_id: userId, consent_id: String(consent.id) },
       success_url: `${origin}/premium?status=success`,
       cancel_url: `${origin}/premium?status=cancel`,
     })

@@ -20,20 +20,19 @@ function periodEnd(sub: StripeSubscription): string {
   return new Date(sec * 1000).toISOString()
 }
 
-/** 二重契約になったサブスクを解約し、最初の請求を返金する（失敗はログに残し、手作業で対応する） */
+/**
+ * 二重契約になったサブスクの最初の請求を返金してから、解約する。
+ * 失敗したら例外にして Stripe に再送させる（返金は冪等キーつきなので、やり直しても二重に返金されない）
+ */
 async function refundAndCancelDuplicate(subscriptionId: string) {
-  try {
-    const s = await stripe<{ latest_invoice?: string | null }>('GET', `subscriptions/${subscriptionId}`)
-    await stripe('DELETE', `subscriptions/${subscriptionId}`)
-    if (s.latest_invoice) {
-      const inv = await stripe<{ payment_intent?: string | null; charge?: string | null }>('GET', `invoices/${s.latest_invoice}`)
-      if (inv.payment_intent) await stripe('POST', 'refunds', { payment_intent: inv.payment_intent }, { idempotencyKey: `dup-refund-${subscriptionId}` })
-      else if (inv.charge) await stripe('POST', 'refunds', { charge: inv.charge }, { idempotencyKey: `dup-refund-${subscriptionId}` })
-    }
-    console.warn('duplicate subscription canceled and refunded:', subscriptionId)
-  } catch (e) {
-    console.error('duplicate subscription cleanup failed (要手動対応):', subscriptionId, e)
+  const s = await stripe<{ latest_invoice?: string | null; status: string }>('GET', `subscriptions/${subscriptionId}`)
+  if (s.latest_invoice) {
+    const inv = await stripe<{ payment_intent?: string | null; charge?: string | null }>('GET', `invoices/${s.latest_invoice}`)
+    if (inv.payment_intent) await stripe('POST', 'refunds', { payment_intent: inv.payment_intent }, { idempotencyKey: `dup-refund-${subscriptionId}` })
+    else if (inv.charge) await stripe('POST', 'refunds', { charge: inv.charge }, { idempotencyKey: `dup-refund-${subscriptionId}` })
   }
+  if (s.status !== 'canceled') await stripe('DELETE', `subscriptions/${subscriptionId}`)
+  console.warn('duplicate subscription refunded and canceled:', subscriptionId)
 }
 
 async function syncSubscription(subscriptionId: string, fallbackUserId?: string) {
@@ -89,7 +88,13 @@ export async function POST(request: Request) {
     switch (event.type) {
       case 'checkout.session.completed':
         if (obj.mode === 'subscription' && typeof obj.subscription === 'string') {
-          await syncSubscription(obj.subscription, typeof obj.client_reference_id === 'string' ? obj.client_reference_id : undefined)
+          const uid = typeof obj.client_reference_id === 'string' ? obj.client_reference_id : undefined
+          await syncSubscription(obj.subscription, uid)
+          // 実際に契約した申し込みの同意に印を付ける（生年月日の固定の基準）
+          const consentId = (obj.metadata as Record<string, string> | undefined)?.consent_id
+          if (consentId && UUID_RE.test(consentId) && uid) {
+            await admin.from('billing_consents').update({ confirmed: true }).eq('id', consentId).eq('user_id', uid)
+          }
         }
         break
       case 'customer.subscription.created':

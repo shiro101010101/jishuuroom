@@ -25,13 +25,18 @@ const MAX_NEW_PINS_PER_DAY = 30
 const CONTACT_RES: RegExp[] = [
   /https?:\/\/|www\.|\.(com|jp|net|me|io)\b/i,
   /[@＠]\s*[a-z0-9_.]/i,
-  /\b(line|insta(gram)?|twitter|discord|kakao|tiktok|telegram|snapchat|skype|gmail|e-?mail)\b/i,
+  /\b(line|insta(gram)?|twitter|discord|kakao|tiktok|telegram|snapchat|skype|gmail|e-?mail|mail)\b/i,
   /\b(dm|id)\b\s*[:：は]?/i,
-  /(^|[^合格オンボーダーガイドデッドアウトスタート])ライン(?!ナップ)/,
-  /らいん|ﾗｲﾝ|インスタ|ツイッター|ディスコード|カカオ|ティックトック|でぃーえむ|メアド|メールアドレス|電話番号|連絡先/,
-  /0\d{1,4}[-ー－\s]?\d{1,4}[-ー－\s]?\d{3,4}/, // 電話番号らしい並び
+  /(ライン|らいん|ﾗｲﾝ)(交換|こうかん|id|やって|教え|おしえ|追加|ついか|しよ|ちょうだい|ください|で連絡|送って|おくって)/i,
+  /インスタ|ツイッター|ディスコード|カカオ|ティックトック|でぃーえむ|メアド|メールアドレス|メール(交換|教え|ください|して)|電話番号|連絡先/,
+  /(?<!\d)0\d{1,4}[-ー－\s]?\d{1,4}[-ー－\s]?\d{3,4}(?!\d)/, // 電話番号らしい並び
 ]
-const hasContact = (t: string) => { const n = t.normalize('NFKC'); return CONTACT_RES.some(re => re.test(n)) }
+const hasContact = (t: string) => {
+  const n = t.normalize('NFKC')
+  // 「L I N E」「ラ イ ン」のように間をあけた書き方も見る
+  const compact = n.replace(/[\s・._\-]/g, '')
+  return CONTACT_RES.some(re => re.test(n) || re.test(compact))
+}
 const MAX_REASON = 50
 /** 同じ人に「ピンされました」を知らせる間隔（付け外しで何度も通知が飛ばないように） */
 const NOTICE_INTERVAL_MS = 7 * 86_400_000
@@ -84,7 +89,8 @@ export async function GET() {
   const iPin = new Set(myPins.map(p => p.pinned_id))
   // ひみつのピンは、自分もピンし返すまで誰からかは見せない（人数だけ）
   const visibleToMe = pinsToMe.filter(p => !p.is_secret || iPin.has(p.pinner_id))
-  const secretCount = pinsToMe.length - visibleToMe.length
+  // ひみつのピンの件数は、ブロック関係の人の分も含めて数える（ブロックして件数が減るかで送り主を割り出せないように）
+  const secretCount = ((toMe.data ?? []) as PinRow[]).filter(p => p.is_secret && !iPin.has(p.pinner_id)).length
   const mutual = new Set(pinsToMe.filter(p => iPin.has(p.pinner_id)).map(p => p.pinner_id))
 
   const ids = [...new Set([...myPins.map(p => p.pinned_id), ...visibleToMe.map(p => p.pinner_id)])]
@@ -126,13 +132,14 @@ export async function POST(request: Request) {
   const { data: existing } = await admin.from('pins').select('id, is_secret').eq('pinner_id', userId).eq('pinned_id', targetId).maybeSingle()
   if (!existing) {
     const since = new Date(Date.now() - 86_400_000).toISOString()
-    const [{ count }, { count: today }] = await Promise.all([
+    const [{ count }, { count: today, error: todayErr }] = await Promise.all([
       admin.from('pins').select('id', { count: 'exact', head: true }).eq('pinner_id', userId),
       // ピンを付けた記録で数える（外しても減らない。付け外しの繰り返しで上限をすり抜けられないように）
       admin.from('pin_events').select('id', { count: 'exact', head: true }).eq('pinner_id', userId).gte('created_at', since),
     ])
     if ((count ?? 0) >= MAX_PINS) return bad(`ピンは${MAX_PINS}人までです。使わないピンを外してください`)
-    if ((today ?? 0) >= MAX_NEW_PINS_PER_DAY) return bad(`新しくピンできるのは1日${MAX_NEW_PINS_PER_DAY}人までです。また明日どうぞ`, 429)
+    // 数えられないとき（DB 更新前など）は上限に達した扱いにする（すり抜けさせない）
+    if (todayErr || (today ?? 0) >= MAX_NEW_PINS_PER_DAY) return bad(`新しくピンできるのは1日${MAX_NEW_PINS_PER_DAY}人までです。また明日どうぞ`, 429)
     // ピンできるのは「今同じ部屋にいる人」「フレンド」「自分をピンしてくれた人（ピンを返す）」だけ
     const [together, { data: friend }, { data: pinnedMe }] = await Promise.all([
       sharesRoomNow(admin, userId, targetId),
@@ -157,7 +164,10 @@ export async function POST(request: Request) {
     { onConflict: 'pinner_id,pinned_id' },
   )
   if (error) { console.error('pin upsert error:', error); return bad('ピンできませんでした（データベースの更新が必要かもしれません）', 500) }
-  if (!existing) await admin.from('pin_events').insert({ pinner_id: userId, pinned_id: targetId })
+  if (!existing) {
+    const { error: evErr } = await admin.from('pin_events').insert({ pinner_id: userId, pinned_id: targetId })
+    if (evErr) console.error('pin_events insert error:', evErr.message)
+  }
 
   // お互いにピンした？
   const { data: back } = await admin.from('pins').select('is_secret').eq('pinner_id', targetId).eq('pinned_id', userId).maybeSingle()

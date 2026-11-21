@@ -30,6 +30,8 @@ type Signal = { id: string; room_id?: string; from_user: string; type: string; p
 
 /** 同時につなぐ相手の上限（受け入れも含む）。大きな部屋で端末が重くならないように */
 const MAX_PEERS = 16
+/** 「満員」と断られた相手に、しばらくつなぎにいかない時間 */
+const BUSY_BACKOFF_MS = 120_000
 
 /**
  * @param memberIds 今ルームに接続している他のメンバー（自分以外）。この人たちからの接続は受け入れる
@@ -67,6 +69,10 @@ export function useWebRTC(roomId: string, userId: string, cameraOn: boolean, mem
   memberIdsRef.current = memberIds
   const initiateRef = useRef<string[] | undefined>(initiateIds)
   initiateRef.current = initiateIds
+  // 断られた相手（満員）→ いつまで待つか
+  const busyUntilRef = useRef<Map<string, number>>(new Map())
+  // 受信中の映像（受信専用の接続を片付けるときに使う）
+  const remoteRef = useRef<Map<string, MediaStream>>(new Map())
   // メンバー一覧の反映より先に届いたシグナルは少しだけ保留する
   const heldRef = useRef<{ s: Signal; at: number }[]>([])
 
@@ -76,6 +82,7 @@ export function useWebRTC(roomId: string, userId: string, cameraOn: boolean, mem
   }
 
   function setRemote(id: string, stream: MediaStream | null) {
+    if (stream) remoteRef.current.set(id, stream); else remoteRef.current.delete(id)
     setRemoteStreams(prev => {
       const next = new Map(prev)
       if (stream) next.set(id, stream); else next.delete(id)
@@ -161,8 +168,7 @@ export function useWebRTC(roomId: string, userId: string, cameraOn: boolean, mem
 
   async function handleSignal({ from_user: from, type, payload }: Signal) {
     if (type === 'bye') { closePeer(from); return }
-    // 上限に達していたら、新しい相手からの接続は受け入れない（自分から選んだ相手は除く）
-    if (!peersRef.current.has(from) && peersRef.current.size >= MAX_PEERS && !(initiateRef.current ?? []).includes(from)) return
+    if (type === 'busy') { busyUntilRef.current.set(from, Date.now() + BUSY_BACKOFF_MS); closePeer(from); return }
     const peer = ensurePeer(from)
     if (!peer) return
     const { pc } = peer
@@ -216,8 +222,16 @@ export function useWebRTC(roomId: string, userId: string, cameraOn: boolean, mem
   const initiateKey = (initiateIds ?? memberIds).join(',')
   useEffect(() => {
     // 自分から選んだ相手につなぐ。カメラ OFF のときは「受信だけ」でつなぐ（見ているだけの人にも映像が届くように）
-    ;(initiateIds ?? memberIds).forEach(id => {
+    const targets = initiateIds ?? memberIds
+    // カメラ OFF のとき：選んだ相手から外れ、映像も届いていない受信専用の接続は片付ける（溜まらないように）
+    if (!localStreamRef.current && initiateIds) {
+      peersRef.current.forEach((_, id) => {
+        if (!targets.includes(id) && !remoteRef.current.has(id)) { send(id, 'bye', {}); closePeer(id) }
+      })
+    }
+    targets.forEach(id => {
       if (id === userId || !memberIds.includes(id)) return
+      if ((busyUntilRef.current.get(id) ?? 0) > Date.now()) return
       const existed = peersRef.current.has(id)
       const peer = ensurePeer(id)
       if (peer && !existed && !localStreamRef.current && peer.pc.getTransceivers().length === 0) {
@@ -230,11 +244,18 @@ export function useWebRTC(roomId: string, userId: string, cameraOn: boolean, mem
 
   function dispatchSignal(s: Signal) {
     // 中継サーバーの準備ができるまでは保留（準備できたら下の effect で処理する）
-    if (s.type !== 'bye' && !configRef.current) { heldRef.current.push({ s, at: Date.now() }); return }
+    if (s.type !== 'bye' && s.type !== 'busy' && !configRef.current) { heldRef.current.push({ s, at: Date.now() }); return }
+    // 上限に達していたら、新しい相手からの接続は断る（自分から選んだ相手は除く）。黙って捨てると相手がやり直しを繰り返すので「満員」と返す
+    if (s.type !== 'bye' && s.type !== 'busy' && !peersRef.current.has(s.from_user)
+        && peersRef.current.size >= MAX_PEERS && !(initiateRef.current ?? []).includes(s.from_user)) {
+      if (s.type === 'description') send(s.from_user, 'busy', {})
+      supabase.from('webrtc_signals').delete().eq('id', s.id).then(() => {})
+      return
+    }
     const run = () => handleSignal(s).catch(e => console.error('signal error:', e))
       .finally(() => { supabase.from('webrtc_signals').delete().eq('id', s.id).then(() => {}) })
     // 同じ相手からのシグナルは届いた順に処理する
-    const peer = s.type === 'bye' ? peersRef.current.get(s.from_user) : ensurePeer(s.from_user)
+    const peer = s.type === 'bye' || s.type === 'busy' ? peersRef.current.get(s.from_user) : ensurePeer(s.from_user)
     if (peer) peer.queue = peer.queue.then(run)
     else run()
   }
@@ -262,7 +283,7 @@ export function useWebRTC(roomId: string, userId: string, cameraOn: boolean, mem
         const s = signal as Signal
         // 別の部屋宛てのシグナルは無視する
         if (s.room_id && s.room_id !== roomId) return
-        if (s.type === 'bye') { dispatchSignal(s); return }
+        if (s.type === 'bye' || s.type === 'busy') { dispatchSignal(s); return }
         // 部屋のメンバー以外からの接続要求には応じない（カメラ映像を勝手に受け取られないように）
         if (!memberIdsRef.current.includes(s.from_user)) {
           heldRef.current = [...heldRef.current.filter(h => Date.now() - h.at < 30_000), { s, at: Date.now() }].slice(-50)
@@ -279,7 +300,7 @@ export function useWebRTC(roomId: string, userId: string, cameraOn: boolean, mem
           .eq('to_user', userId).eq('room_id', roomId).gte('created_at', since)
           .order('created_at', { ascending: true })
         for (const s of (data ?? []) as Signal[]) {
-          if (s.type === 'bye' || memberIdsRef.current.includes(s.from_user)) dispatchSignal(s)
+          if (s.type === 'bye' || s.type === 'busy' || memberIdsRef.current.includes(s.from_user)) dispatchSignal(s)
           else heldRef.current.push({ s, at: Date.now() })
         }
       })

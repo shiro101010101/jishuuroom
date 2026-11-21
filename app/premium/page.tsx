@@ -36,7 +36,7 @@ export default async function PremiumPage({ searchParams }: { searchParams: Prom
     const { data } = await admin.from('subscriptions').select('status, current_period_end, cancel_at_period_end, plan_interval, stripe_subscription_id').eq('user_id', userId).maybeSingle()
     sub = data ?? null
     // 以前に申し込みで入力した生年月日（変更不可）
-    const { data: c } = !data?.stripe_subscription_id ? { data: null } : await admin.from('billing_consents').select('birth_date').eq('user_id', userId).order('created_at', { ascending: true }).limit(1).maybeSingle()
+    const { data: c } = await admin.from('billing_consents').select('birth_date').eq('user_id', userId).eq('confirmed', true).order('created_at', { ascending: true }).limit(1).maybeSingle()
     lockedBirth = (c?.birth_date as string | undefined) ?? null
   }
   const ready = stripeConfigured() && legalReady()

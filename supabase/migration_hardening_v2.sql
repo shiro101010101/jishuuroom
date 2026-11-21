@@ -53,9 +53,11 @@ revoke insert, update, delete on public.session_participants from authenticated;
 create or replace function public.sever_on_block()
 returns trigger language plpgsql security definer set search_path = public as $$
 begin
+  -- ブロックした人のピンは消す。ブロックされた人からのひみつのピンは残す（消すと件数が減り、送り主がばれるため。
+  -- ブロック中はピンし返せないので、マッチすることはない）
   delete from public.pins
     where (pinner_id = new.blocker_id and pinned_id = new.blocked_id)
-       or (pinner_id = new.blocked_id and pinned_id = new.blocker_id);
+       or (pinner_id = new.blocked_id and pinned_id = new.blocker_id and not is_secret);
   delete from public.pin_matches
     where user_a = least(new.blocker_id, new.blocked_id) and user_b = greatest(new.blocker_id, new.blocked_id);
   delete from public.pin_notices
@@ -101,3 +103,6 @@ alter table public.billing_consents alter column user_id drop not null;
 alter table public.billing_consents drop constraint if exists billing_consents_user_id_fkey;
 alter table public.billing_consents add constraint billing_consents_user_id_fkey
   foreign key (user_id) references public.profiles(id) on delete set null;
+
+-- 実際に契約した申し込みの同意に印を付ける（生年月日の固定は、この印のある同意だけを基準にする）
+alter table public.billing_consents add column if not exists confirmed boolean not null default false;

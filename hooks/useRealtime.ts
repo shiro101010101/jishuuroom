@@ -24,6 +24,8 @@ export function useRoomRealtime(roomId: string, userId: string) {
   // Join on mount
   useEffect(() => {
     const joinRoom = async () => {
+      // 入室したらすぐ「最近アクセス」を更新（ピンや「同じ部屋」の判定が入室直後から効くように）
+      ;(supabase as any).rpc('update_last_seen').then(() => {}, () => {})
       const { error } = await (supabase as any).from('room_members').upsert(
         { room_id: roomId, user_id: userId, status: 'studying', camera_on: false },
         { onConflict: 'room_id,user_id' }
