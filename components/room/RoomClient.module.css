@@ -505,3 +505,12 @@ button.ssName:hover { background: rgba(var(--scrim),.55); border-color: rgba(var
 .ssPinBtn:hover { background: rgba(125,149,255,.35); border-color: rgba(125,149,255,.6); }
 .ssPinBtnOn { color: #fff; background: rgba(125,149,255,.75); border-color: rgba(125,149,255,.9); }
 .ssPinBtnPair { color: #fff; background: rgba(139,92,246,.8); border-color: rgba(167,139,250,.95); }
+
+/* タッチ操作（hover できない端末）では、タイルの操作ボタンをいつも表示・押しやすい大きさに */
+@media (hover: none) {
+  .ssTileActions { opacity: 1; transform: none; }
+}
+.ssTileActions button { width: 34px; height: 34px; }
+.ssPinBtn { min-height: 32px; }
+.chatHints button { min-height: 32px; }
+.ssChip { font-size: 11px; background: rgba(var(--scrim),.6); }

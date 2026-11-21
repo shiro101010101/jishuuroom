@@ -102,6 +102,11 @@ export default function StudyGroups({ demoData }: { demoData?: unknown } = {}) {
   }, [demoData])
 
   useEffect(() => { load() }, [load])
+  // 回が終わったら読み直す（毎週の勉強会は次の回の日時に変わる）
+  useEffect(() => {
+    if (!data || demoData) return
+    if (data.sessions.some(s => now >= s.startAt + s.durationMins * 60_000)) load()
+  }, [now, data, demoData, load])
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 30_000)
     const onFocus = () => { setNow(Date.now()); load() }
@@ -248,7 +253,7 @@ export default function StudyGroups({ demoData }: { demoData?: unknown } = {}) {
             <FriendPicker friends={data?.friends ?? []} selected={friendSel} onChange={setFriendSel}/>
           </div>
 
-          <p className={styles.hint}>時刻は日本時間です。当日は選んだ部屋に集まります（ほかの人もいる、みんなの自習室です）。参加する人には、始まる10〜15分前に通知が届きます。</p>
+          <p className={styles.hint}>🕘 日本時間 ・ 当日は選んだ部屋に集合 ・ 開始10〜15分前に通知</p>
           {formError && <p className={styles.error}>{formError}{formError.includes('プレミアム') && <> <a href="/premium" className={styles.upgradeLink}>✦ プレミアムを見る</a></>}</p>}
           <div className={styles.btns}>
             <button type="button" className={styles.ghost} onClick={() => { setOpen(false); setFormError(null) }}>キャンセル</button>
@@ -287,9 +292,9 @@ export default function StudyGroups({ demoData }: { demoData?: unknown } = {}) {
               <div className={styles.cardTop}>
                 <div className={styles.when}>
                   {live ? <span className={styles.liveTag}><i/>開催中</span>
-                    : mins <= 60 ? <span className={styles.soonTag}>あと{Math.max(mins, 0)}分</span> : null}
+                    : mins > 0 && mins <= 60 ? <span className={styles.soonTag}>あと{mins}分</span> : null}
                   <span className={styles.date}>{repeat ? `${repeat} ${formatJstTime(s.startAt)}` : formatJst(s.startAt)}</span>
-                  <span className={styles.dur}>{s.durationMins}分</span>
+                  <span className={styles.dur}>{s.durationMins >= 60 && s.durationMins % 60 === 0 ? `${s.durationMins / 60}時間` : `${s.durationMins}分`}</span>
                 </div>
                 {s.status === 'invited' && <span className={styles.statusInvited}>招待されています</span>}
                 {s.status === 'going' && <span className={styles.statusGoing}>参加予定</span>}
@@ -317,10 +322,10 @@ export default function StudyGroups({ demoData }: { demoData?: unknown } = {}) {
                   {(s.status === 'host' || s.status === 'going') && (
                     <>
                       <button type="button" className={styles.ghost} onClick={() => { setInviting(inviting === s.id ? null : s.id); setInviteSel([]) }}>友達を招待</button>
-                      {s.inviteCode && <button type="button" className={styles.ghost} onClick={() => copyLink(s)}>リンク</button>}
+                      {s.inviteCode && <button type="button" className={styles.ghost} onClick={() => copyLink(s)}>🔗 リンクをコピー</button>}
                     </>
                   )}
-                  {s.status === 'going' && <button type="button" className={styles.text} disabled={!!busy} onClick={() => act(s, 'leave')}>抜ける</button>}
+                  {s.status === 'going' && <button type="button" className={styles.text} disabled={!!busy} onClick={() => act(s, 'leave')}>参加をやめる</button>}
                   {s.status === 'host' && <button type="button" className={styles.danger} disabled={!!busy} onClick={() => remove(s)}>削除</button>}
                 </div>
               </div>

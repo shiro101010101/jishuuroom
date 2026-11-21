@@ -13,7 +13,7 @@ export const LIMITS = {
 /** 表示用の価格（実際の請求額は Stripe の Price で決まる。変えるときは両方そろえる） */
 export const PRICES = {
   monthly: { yen: 480, label: '月額 480円' },
-  yearly:  { yen: 3800, label: '年額 3,800円（約34%お得）' },
+  yearly:  { yen: 3800, label: '年額 3,800円（月額プランを12か月続けた場合の5,760円より1,960円安くなります）' },
 } as const
 
 const ACTIVE = new Set(['active', 'trialing', 'past_due'])

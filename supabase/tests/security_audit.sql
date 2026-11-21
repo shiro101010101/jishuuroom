@@ -19,7 +19,7 @@ pol as (
 allow_true(name) as (values ('profiles.profiles read')),
 -- ログイン済みユーザーが呼んでよい security definer 関数（ここに無いものは NG）
 allow_rpc(name) as (values
-  ('send_reaction'), ('toggle_pin'), ('update_subject'), ('update_last_seen'),
+  ('send_reaction'), ('i_pinned'), ('is_session_member'), ('update_subject'), ('update_last_seen'),
   ('request_study_pair'), ('accept_study_pair'), ('end_study_pair'),
   ('can_access_room'), ('is_me_banned'), ('is_blocked_between'), ('room_has_space')),
 -- 列単位で公開してよい profiles の列（これ以外の列が読めたら NG）

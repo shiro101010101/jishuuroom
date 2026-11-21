@@ -270,13 +270,21 @@ BASE_URL=https://本番のURL npm run check:ui   # 公開中のサイトをチ�
 2. `supabase/migration_session_cron.sql` … 開始前通知を 5 分おきに実行（URL と `CRON_SECRET` を書き換えてから）
 3. `supabase/migration_rooms_pins.sql` … 部屋を Room 1〜3 に整理・定員なし・ピン（理由／ひみつ）・マッチ・性別／Instagram・ブロック時の関係削除
 4. `supabase/migration_premium.sql` … プレミアム（課金状態・申し込み時の同意の記録）
-5. 最後に `supabase/tests/security_audit.sql` で「✅ 問題なし」を確認
+5. `supabase/migration_hardening_v2.sql` … セキュリティ再点検の対応（勉強会・参加者の書き込みをサーバー専用に、古い toggle_pin を無効化、ブロック時に入室権も削除、通知の連打防止、Stripe イベントの重複防止）
+6. 最後に `supabase/tests/security_audit.sql` で「✅ 問題なし」を確認
 
 ### 2. Stripe（プレミアム）
 1. Stripe で商品「プレミアム」を作り、価格を 2 つ作る：月額 480円・年額 3,800円（定期支払い・JPY）
 2. Webhook を追加：URL `https://<本番URL>/api/billing/webhook`、イベント `checkout.session.completed` `customer.subscription.created` `customer.subscription.updated` `customer.subscription.deleted`
 3. 「カスタマーポータル」を有効にする（解約・支払い方法の変更をオン）
-4. Vercel の環境変数に追加：`STRIPE_SECRET_KEY` `STRIPE_WEBHOOK_SECRET` `STRIPE_PRICE_MONTHLY` `STRIPE_PRICE_YEARLY`
+4. Vercel の環境変数に追加：`STRIPE_SECRET_KEY` `STRIPE_WEBHOOK_SECRET` `STRIPE_PRICE_MONTHLY` `STRIPE_PRICE_YEARLY`（4 つそろうまで申し込みボタンは出ない）
+5. 価格は「税込（tax_behavior = inclusive）」で作る。表示（`lib/premium.ts` の `PRICES`）と金額を必ず一致させる
+6. 設定 → Checkout：「顧客のサブスクリプションを 1 つに制限」を ON（二重契約の防止）
+7. カスタマーポータル：本番（live）モードでも保存する。解約は「期間の終了時」、日割りは「なし」、プランの切り替えは OFF（規約の「日割り・返金なし」と合わせる）
+8. 設定 → Billing → サブスクリプションと請求：支払いの再試行がすべて失敗したら「サブスクリプションをキャンセル」にする
+9. Webhook エンドポイントの API バージョンはどれでもよい（受け取った後に Stripe から最新の状態を取り直すため）
+10. 設定 → 公開情報で利用規約の URL（`/terms`）を登録したら、環境変数 `STRIPE_REQUIRE_TOS=1` にすると、決済画面で規約への同意チェックが必須になる
+11. BAN したユーザーのサブスクは自動で解約される（`/api/admin/ban`）。手作業でアカウントを消すときは、先に Stripe でサブスクを解約すること
 
 ### 3. 特定商取引法に基づく表記（/tokushoho）
 Vercel の環境変数に `LEGAL_SELLER_NAME`（販売事業者名）・`LEGAL_EMAIL` を必ず入れる。任意で `LEGAL_MANAGER_NAME` `LEGAL_ADDRESS` `LEGAL_PHONE`（未設定なら「請求があれば遅滞なく開示」と表示）。

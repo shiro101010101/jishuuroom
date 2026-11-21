@@ -62,8 +62,8 @@ const BGM_TRACKS = [
   { id: 'focus',  name: '集中ホワイトノイズ', icon: '🔊', type: 'white' },
 ]
 // チャットの話しかけヒント（まだやり取りが少ないときに出す。勉強の話題だけ）
-const CHAT_HINTS_JA = ['マッチありがとう！何の勉強してる？', '一緒に25分やろう！', 'おつかれさま！今日は何時間やった？', '目標は何ですか？📚', 'いつも何時ごろ勉強してる？']
-const CHAT_HINTS_EN = ['Thanks for the match! What are you studying?', "Let's do 25 minutes together!", 'Nice work today!', "What's your goal?"]
+const CHAT_HINTS_JA = ['ピンありがとう！何の勉強してる？', '一緒に25分やろう！', 'おつかれさま！今日は何時間やった？', '目標は何ですか？📚', '今日の目標は？一緒にやろう']
+const CHAT_HINTS_EN = ['Thanks for the pin! What are you studying?', "Let's do 25 minutes together!", 'Nice work today!', "What's your goal?"]
 // 映像を同時につなぐ最大人数（入室は何人でもできる）
 const MAX_VIDEO_PEERS = 8
 /** きょうのとなりの席：自分と相手の ID・日付（JST）から決まる数で、いちばん小さい人。日ごとに変わる */
@@ -155,14 +155,12 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
   } = useInteractions(profile.id, room.id)
   // ピンの画面（理由・ひみつ）
   const [pinTarget, setPinTarget] = useState<{ userId: string; name: string } | null>(null)
-  async function onPinClick(userId: string, name: string) {
-    if (isPinned(userId)) {
-      if (!window.confirm(lang==='ja' ? `${name}さんのピンを外しますか？` : `Unpin ${name}?`)) return
-      const r = await togglePin(userId)
-      if (r.error) showToast('❌ ' + r.error)
-      return
-    }
-    setPinTarget({ userId, name })
+  // ピンのボタン：いつも小さな画面を開く（ピンする・理由を変える・外すはその中で。ワンタップで外れないように）
+  function onPinClick(userId: string, name: string) { setPinTarget({ userId, name }) }
+  async function unpin(userId: string) {
+    const r = await togglePin(userId)
+    if (r.error) { showToast('❌ ' + r.error); return false }
+    return true
   }
 
   // ── Stats ──
@@ -325,9 +323,13 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
   const seatRank = (m: any) => matchedIds.has(m.user_id) ? 0 : m.user_id === neighborId ? 1 : isPinned(m.user_id) ? 2
     : displayFriends.some((f: any) => f.addressee_id === m.user_id) ? 3 : m.camera_on ? 4 : 5
   const orderedMembers = [...visibleMembers].sort((a: any, b: any) => seatRank(a) - seatRank(b))
-  // 映像を同時につなぐのは近くの席の 8 人まで（何人でも入室できる。全員と映像をつなぐと端末が重くなるため）
-  const videoPeerIds = orderedMembers.map((m: any) => m.user_id).filter((id: string) => id !== profile.id).slice(0, MAX_VIDEO_PEERS)
-  const { localStream, remoteStreams, relayStatus } = useWebRTC(room.id, profile.id, cameraOn, videoPeerIds)
+  // 自分から映像をつなぎにいくのは 8 人まで（何人でも入室できる。全員とつなぐと端末が重くなるため）
+  // カメラ ON の人を先に（OFF の人で枠が埋まらないように）。相手からの接続は部屋の全員分受け入れる
+  const otherMemberIds = orderedMembers.map((m: any) => m.user_id).filter((id: string) => id !== profile.id)
+  const videoPeerIds = [...orderedMembers].filter((m: any) => m.user_id !== profile.id)
+    .sort((a: any, b: any) => Number(!!b.camera_on) - Number(!!a.camera_on))
+    .map((m: any) => m.user_id).slice(0, MAX_VIDEO_PEERS)
+  const { localStream, remoteStreams, relayStatus } = useWebRTC(room.id, profile.id, cameraOn, otherMemberIds, videoPeerIds)
   useEffect(() => { updateStatus(timer.mode === 'short' || timer.mode === 'long' ? 'break' : 'studying', currentTask, cameraOn) }, [cameraOn, timer.mode, currentTask])
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [chatMessages])
   const friendsRef = useRef(displayFriends)
@@ -591,14 +593,19 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
     if (await copySessionInvite(data.invite_code)) showToast(tr('🔗 招待リンクをコピーしました', '🔗 Invite link copied'))
     else window.prompt(tr('このリンクをコピーしてください', 'Copy this link'), `${window.location.origin}/invite/${data.invite_code}`)
   }
+  /** 勉強会に参加（サーバーが招待・入室権を確かめる）。成功したら true */
+  async function joinSessionApi(sessionId: string): Promise<boolean> {
+    const res = await fetch('/api/study-group', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId, action: 'join' }) })
+    if (res.ok) return true
+    const d = await res.json().catch(() => ({}))
+    showToast('❌ ' + (d.error ?? tr('参加できませんでした', 'Could not join')))
+    return false
+  }
   async function joinSession(sessionId: string) {
-    await (supabase as any).from('session_participants').upsert(
-      { session_id: sessionId, user_id: profile.id },
-      { onConflict: 'session_id,user_id' }
-    )
+    if (!(await joinSessionApi(sessionId))) return
     fetchSessions()
     showToast(tr('✅ 参加登録しました！開始時刻になると入室できます', '✅ Registered! You can enter when it starts'))
-    addNotif('✋', tr('セッションに参加登録しました', 'Registered for a session'))
+    addNotif('✋', tr('勉強会に参加登録しました', 'Registered for a study group'))
   }
 
   // ── BGM ──
@@ -860,6 +867,8 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
           initial={(() => { const p = getMyPin(pinTarget.userId); return p ? { reason: p.reason, secret: p.is_secret } : null })()}
           onClose={() => setPinTarget(null)}
           onUpgrade={() => router.push('/premium')}
+          mutual={matchedIds.has(pinTarget.userId)}
+          onRemove={async () => { if (await unpin(pinTarget.userId)) { setPinTarget(null); showToast(lang==='ja' ? `${pinTarget.name}さんのピンを外しました` : 'Unpinned') } }}
           onSubmit={async (v) => {
             const r = await togglePin(pinTarget.userId, { ...v, forceUpdate: true })
             if (r.error) return { error: r.error, upgrade: r.upgrade }
@@ -925,8 +934,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
             {isFriend && <button onClick={() => { close(); unfriend(viewUserId, name) }}><Icon name="x" size={14}/>{lang==='ja'?'フレンド解除':'Unfriend'}</button>}
             {isFriend && <button onClick={() => studyTogetherWith(viewUserId, name)}><Icon name="users" size={14}/>{lang==='ja'?'一緒に勉強しよう':'Study together'}</button>}
             {isFriend && room.id && <button onClick={() => inviteFriend(viewUserId, name).catch(() => {})}><Icon name="rooms" size={14}/>{lang==='ja'?'この部屋に招待':'Invite here'}</button>}
-            {m && <button onClick={() => { close(); onPinClick(viewUserId, name) }}><Icon name="pin" size={14}/>{isPinned(viewUserId)?(lang==='ja'?'ピン解除':'Unpin'):(lang==='ja'?'ピン留め':'Pin')}</button>}
-            {m && isPinned(viewUserId) && <button onClick={() => { close(); setPinTarget({ userId: viewUserId, name }) }}><Icon name="pin" size={14}/>{lang==='ja'?'ピンの理由を変える':'Edit pin'}</button>}
+            {m && <button onClick={() => { close(); onPinClick(viewUserId, name) }}><Icon name="pin" size={14}/>{matchedIds.has(viewUserId)?(lang==='ja'?'🤝 勉強仲間（ピンを編集）':'Buddy (edit pin)'):isPinned(viewUserId)?(lang==='ja'?'ピンを編集・外す':'Edit pin'):(lang==='ja'?'ピンする':'Pin')}</button>}
             <button onClick={() => { close(); setReportModal({ userId:viewUserId, name }) }}><Icon name="flag" size={14}/>{lang==='ja'?'報告':'Report'}</button>
             {blockedIds.has(viewUserId)
               ? <button onClick={() => handleUnblock(viewUserId, name)}><Icon name="x" size={14}/>{lang==='ja'?'ブロック解除':'Unblock'}</button>
@@ -1038,9 +1046,9 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
       {showScheduler && (
         <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setShowScheduler(false) }}>
           <div className={styles.modal} role="dialog" aria-modal="true" aria-label={tr('予約','Schedule')}>
-            <h3>📅 {tr('勉強セッションを予約','Schedule a study session')}</h3>
+            <h3>📅 {tr('この部屋で勉強会を予約','Schedule a study group here')}</h3>
             <div style={{ display:'flex', flexDirection:'column', gap:10, margin:'16px 0' }}>
-              <input placeholder={tr('セッションのタイトル（例：英語リスニング集中会）','Session title (e.g. English listening)')}
+              <input placeholder={tr('勉強会のタイトル（例：英語リスニング集中会）','Title (e.g. English listening)')}
                 value={schedTitle} onChange={e => setSchedTitle(e.target.value)}
                 style={{ padding:'8px 10px', background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:7, color:'var(--text)', fontSize:13, fontFamily:'inherit', outline:'none' }} />
               <div style={{ display:'flex', gap:8 }}>
@@ -1194,27 +1202,29 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                       <span className={`${styles.ssStatus} ${m.status==='studying'?styles.ssStatusStudy:m.status==='break'?styles.ssStatusBreak:styles.ssStatusAway}`}>
                         {statusLabel(m.status)}
                       </span>
-                      {matchedIds.has(m.user_id)
-                        ? <span className={`${styles.ssChip} ${styles.ssChipPair}`}>🤝 {lang==='ja'?'ペア':'Pair'}</span>
-                        : isPinnedUser && <span className={styles.ssChip}><Icon name="pin" size={10}/></span>}
-                      {m.user_id === neighborId && <span className={`${styles.ssChip} ${styles.ssChipSeat}`}>🪑 {lang==='ja'?'きょうのとなり':'Your neighbor'}</span>}
-                      {myGoal && memberGoals[m.user_id] === myGoal && <span className={styles.ssChip}>🎯 {lang==='ja'?'同じ目標':'Same goal'}</span>}
-                      {!matchedIds.has(m.user_id) && pinFrom(m.user_id) && <span className={styles.ssChip} title={pinFrom(m.user_id)?.reason ?? ''}>📌 {lang==='ja'?'あなたをピン':'Pinned you'}</span>}
+                      {(() => {
+                        // 関係の印は 1 つだけ（多すぎると読めないので）：仲間 → きょうのとなり → 同じ目標 → あなたをピン → ピン中
+                        if (matchedIds.has(m.user_id)) return <span className={`${styles.ssChip} ${styles.ssChipPair}`}>🤝 {lang==='ja'?'仲間':'Buddy'}</span>
+                        if (m.user_id === neighborId) return <span className={`${styles.ssChip} ${styles.ssChipSeat}`} title={lang==='ja'?'毎日ひとり、となりの席の人が選ばれます。今日はこの人と一緒にがんばろう':'A new neighbor is picked every day'}>🪑 {lang==='ja'?'きょうのとなり':'Your neighbor'}</span>
+                        if (myGoal && memberGoals[m.user_id] === myGoal) return <span className={styles.ssChip}>🎯 {lang==='ja'?'同じ目標':'Same goal'}</span>
+                        if (pinFrom(m.user_id)) return <span className={styles.ssChip} title={pinFrom(m.user_id)?.reason ?? ''}>📌 {lang==='ja'?'あなたをピン':'Pinned you'}</span>
+                        return null
+                      })()}
                       {!rs && m.camera_on && videoPeerIds.indexOf(m.user_id) === -1 && <span className={styles.ssChip}>{lang==='ja'?'映像は近くの席の8人まで':'Video: nearest 8'}</span>}
                       {rxs.length > 0 && <span className={styles.ssChip}>{rxs.slice(-3).map(r => r.emoji).join('')}</span>}
                     </div>
                     <div className={styles.ssTileActions}>
-                      <button title={lang==='ja'?'リアクション':'React'} onClick={() => setReactionTarget({ userId:m.user_id, name:mp.display_name })}><Icon name="smile" size={14}/></button>
+                      <button title={lang==='ja'?'リアクション':'React'} aria-label={lang==='ja'?'リアクション':'React'} onClick={() => setReactionTarget({ userId:m.user_id, name:mp.display_name })}><Icon name="smile" size={14}/></button>
                       {isFriend ? (
-                        <button title={lang==='ja'?'チャット':'Chat'} onClick={() => openChat(m.user_id)}><Icon name="message" size={14}/></button>
+                        <button title={lang==='ja'?'チャット':'Chat'} aria-label={lang==='ja'?'チャット':'Chat'} onClick={() => openChat(m.user_id)}><Icon name="message" size={14}/></button>
                       ) : isPending ? (
-                        <button title={lang==='ja'?'申請中':'Pending'} disabled><Icon name="clock" size={14}/></button>
+                        <button title={lang==='ja'?'申請中':'Pending'} aria-label={lang==='ja'?'申請中':'Pending'} disabled><Icon name="clock" size={14}/></button>
                       ) : (
-                        <button title={lang==='ja'?'一緒に勉強しよう（フレンド申請）':'Study together (add friend)'} onClick={() => requestFriend(m.user_id, mp.display_name)}><Icon name="userPlus" size={14}/></button>
+                        <button title={lang==='ja'?'一緒に勉強しよう（フレンド申請）':'Study together (add friend)'} aria-label={lang==='ja'?'一緒に勉強しよう（フレンド申請）':'Study together (add friend)'} onClick={() => requestFriend(m.user_id, mp.display_name)}><Icon name="userPlus" size={14}/></button>
                       )}
-                      {isFriend && <button title={lang==='ja'?'一緒に勉強しよう（ペア申請）':'Study together (pair)'} onClick={() => studyTogetherWith(m.user_id, mp.display_name)}><Icon name="users" size={14}/></button>}
-                      <button title={lang==='ja'?'報告':'Report'} onClick={() => setReportModal({ userId:m.user_id, name:mp.display_name })}><Icon name="flag" size={14}/></button>
-                      <button title={lang==='ja'?'ブロック':'Block'} onClick={() => setBlockModal({ userId:m.user_id, name:mp.display_name })}><Icon name="x" size={14}/></button>
+                      {isFriend && <button title={lang==='ja'?'一緒に勉強しよう（ペア申請）':'Study together (pair)'} aria-label={lang==='ja'?'一緒に勉強しよう（ペア申請）':'Study together (pair)'} onClick={() => studyTogetherWith(m.user_id, mp.display_name)}><Icon name="users" size={14}/></button>}
+                      <button title={lang==='ja'?'報告':'Report'} aria-label={lang==='ja'?'報告':'Report'} onClick={() => setReportModal({ userId:m.user_id, name:mp.display_name })}><Icon name="flag" size={14}/></button>
+                      <button title={lang==='ja'?'ブロック':'Block'} aria-label={lang==='ja'?'ブロック':'Block'} onClick={() => setBlockModal({ userId:m.user_id, name:mp.display_name })}><Icon name="x" size={14}/></button>
                     </div>
                     <div className={styles.ssTileBottom}>
                       <button className={styles.ssName} onClick={() => setViewUserId(m.user_id)} title={lang==='ja'?'プロフィールを見る':'View profile'}>{mp.display_name}</button>
@@ -1222,14 +1232,14 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                       {(() => {
                         const matched = matchedIds.has(m.user_id)
                         const secretPin = !!getMyPin(m.user_id)?.is_secret
-                        const label = matched ? (lang==='ja'?'🤝 ペア':'🤝 Pair')
+                        const label = matched ? (lang==='ja'?'🤝 仲間':'🤝 Buddy')
                           : isPinnedUser ? (secretPin ? (lang==='ja'?'🤫 ひみつ':'🤫 Secret') : (lang==='ja'?'📌 ピン中':'📌 Pinned'))
                           : (lang==='ja'?'📌 ピン':'📌 Pin')
-                        const hint = matched ? (lang==='ja'?'お互いにピンしています（タップで解除）':'You pinned each other (tap to unpin)')
-                          : isPinnedUser ? (lang==='ja'?'ピンしています（タップで解除）':'Pinned (tap to unpin)')
-                          : (lang==='ja'?'気になる勉強仲間をピン。お互いにピンするとマッチします':'Pin a study buddy. Pin each other to match')
+                        const hint = matched ? (lang==='ja'?`${mp.display_name}さんとは勉強仲間です（お互いにピン）`:'You pinned each other')
+                          : isPinnedUser ? (lang==='ja'?`${mp.display_name}さんをピンしています。タップで理由の変更・解除`:'Pinned. Tap to edit')
+                          : (lang==='ja'?`${mp.display_name}さんをピン。一緒にがんばりたい人をピンして、お互いにピンすると勉強仲間になれます`:'Pin to become study buddies')
                         return (
-                          <button type="button" title={hint} aria-pressed={isPinnedUser}
+                          <button type="button" title={hint} aria-label={hint} aria-pressed={isPinnedUser}
                             className={`${styles.ssPinBtn} ${isPinnedUser?styles.ssPinBtnOn:''} ${matched?styles.ssPinBtnPair:''}`}
                             onClick={() => onPinClick(m.user_id, mp.display_name)}>{label}</button>
                         )
@@ -1613,7 +1623,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                 {panel==='schedule' && (
                   <>
                     <button onClick={() => setShowScheduler(true)} style={{ width:'100%', padding:'9px', background:'var(--accent)', border:'none', borderRadius:8, color:'#fff', fontSize:12, cursor:'pointer', fontFamily:'inherit', marginBottom:10 }}>
-                      + {tr('セッションを予約する','Schedule a session')}
+                      + {tr('勉強会を予約する','Schedule a study group')}
                     </button>
                     <TimelineCalendar
                       userId={profile.id}
@@ -1621,17 +1631,8 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                       tasks={tasks}
                       scheduledSessions={scheduledSessions}
                       onJoinSession={async (s) => {
-                        const { data: sess } = await (supabase as any).from('scheduled_sessions')
-                          .select('room_id')
-                          .eq('id', s.id)
-                          .single()
-                        if ((sess as any)?.room_id) {
-                          await (supabase as any).from('session_participants').upsert(
-                            { session_id: s.id, user_id: profile.id },
-                            { onConflict: 'session_id,user_id' }
-                          )
-                          router.push('/room/' + sess.room_id)
-                        }
+                        const target = scheduledSessions.find((x: any) => x.id === s.id) as any
+                        if (target?.room_id && (await joinSessionApi(s.id))) router.push('/room/' + target.room_id)
                       }}
                     />
                     {scheduledSessions.length===0 ? (
@@ -1672,17 +1673,8 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                             {(isStarting || isSoon) && (
                               <button onClick={async () => {
                                 // Get the session's private room and navigate there
-                                const { data: sess } = await (supabase as any).from('scheduled_sessions')
-                                  .select('room_id')
-                                  .eq('id', s.id)
-                                  .single()
-                                if ((sess as any)?.room_id) {
-                                  // Join as participant first
-                                  await (supabase as any).from('session_participants').upsert(
-                                    { session_id: s.id, user_id: profile.id },
-                                    { onConflict: 'session_id,user_id' }
-                                  )
-                                  router.push('/room/' + sess.room_id)
+                                if (s.room_id) {
+                                  if (await joinSessionApi(s.id)) router.push('/room/' + s.room_id)
                                 } else {
                                   showToast(tr('❌ ルーム情報が取得できませんでした','❌ Could not load the room'))
                                 }
@@ -1744,6 +1736,9 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
           onViewProfile={setViewUserId}
           pinState={(uid: string) => matchedIds.has(uid) ? 'pair' : isPinned(uid) ? (getMyPin(uid)?.is_secret ? 'secret' : 'pinned') : 'none'}
           onPin={onPinClick}
+          seatTag={(uid: string) => uid === neighborId ? (lang==='ja'?'🪑 きょうのとなり':'🪑 Neighbor')
+            : myGoal && memberGoals[uid] === myGoal ? (lang==='ja'?'🎯 同じ目標':'🎯 Same goal')
+            : (!matchedIds.has(uid) && pinFrom(uid)) ? (lang==='ja'?'📌 あなたをピン':'📌 Pinned you') : null}
           onAcceptFriend={(id: string) => acceptRequest(id, (pendingIn.find((r: any) => r.id === id) as any)?.profiles?.display_name ?? '')}
           onDeclineFriend={declineRequest}
           onToggleBgm={toggleBgm} onSetVolume={setVolume}

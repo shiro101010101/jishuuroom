@@ -16,6 +16,10 @@ export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 const MAX_PINS = 200
+/** 新しくピンできる人数（24 時間あたり）。知らない人への大量ピン・通知の連打を防ぐ */
+const MAX_NEW_PINS_PER_DAY = 30
+/** 連絡先の交換に使われやすい書き方（理由欄には書けない） */
+const CONTACT_RE = /https?:\/\/|www\.|[@＠]|\d[\d\-ー－\s]{3,}\d|line|ライン|ﾗｲﾝ|インスタ|insta|twitter|ツイッター|discord|ディスコ|kakao|カカオ|tiktok|ティックトック|電話|tel|メール|mail|gmail|dm|でぃーえむ|ＩＤ|\bid\b|ＬＩＮＥ/i
 const MAX_REASON = 50
 /** 同じ人に「ピンされました」を知らせる間隔（付け外しで何度も通知が飛ばないように） */
 const NOTICE_INTERVAL_MS = 7 * 86_400_000
@@ -100,7 +104,7 @@ export async function POST(request: Request) {
   const reason = typeof body.reason === 'string' ? body.reason.trim().replace(/\s+/g, ' ') : ''
   if (reason.length > MAX_REASON) return bad(`理由は${MAX_REASON}文字までです`)
   if (reason && hasNgWord(reason)) return bad('不適切な言葉が含まれています')
-  if (/https?:\/\/|www\.|@[A-Za-z0-9_.]{2,}/i.test(reason)) return bad('理由に URL や SNS の ID は書けません')
+  if (CONTACT_RE.test(reason.normalize('NFKC'))) return bad('理由に連絡先・SNS・URL・数字の並びは書けません')
   const secret = body.secret === true
 
   const { data: target } = await admin.from('profiles').select('id, display_name, is_banned').eq('id', targetId).maybeSingle()
@@ -109,15 +113,31 @@ export async function POST(request: Request) {
 
   const { data: existing } = await admin.from('pins').select('id, is_secret').eq('pinner_id', userId).eq('pinned_id', targetId).maybeSingle()
   if (!existing) {
-    const { count } = await admin.from('pins').select('id', { count: 'exact', head: true }).eq('pinner_id', userId)
+    const since = new Date(Date.now() - 86_400_000).toISOString()
+    const [{ count }, { count: today }] = await Promise.all([
+      admin.from('pins').select('id', { count: 'exact', head: true }).eq('pinner_id', userId),
+      admin.from('pins').select('id', { count: 'exact', head: true }).eq('pinner_id', userId).gte('created_at', since),
+    ])
     if ((count ?? 0) >= MAX_PINS) return bad(`ピンは${MAX_PINS}人までです。使わないピンを外してください`)
+    if ((today ?? 0) >= MAX_NEW_PINS_PER_DAY) return bad(`新しくピンできるのは1日${MAX_NEW_PINS_PER_DAY}人までです。また明日どうぞ`, 429)
+    // ピンできるのは「今同じ部屋にいる人」「フレンド」「自分をピンしてくれた人（ピンを返す）」だけ
+    const [{ data: myRooms }, { data: theirRooms }, { data: friend }, { data: pinnedMe }] = await Promise.all([
+      admin.from('room_members').select('room_id').eq('user_id', userId),
+      admin.from('room_members').select('room_id').eq('user_id', targetId),
+      admin.from('friendships').select('id').eq('requester_id', userId).eq('addressee_id', targetId).eq('status', 'accepted').maybeSingle(),
+      // ひみつのピンは数えない（ピンできるかどうかで、ひみつのピンがばれないように）
+      admin.from('pins').select('id').eq('pinner_id', targetId).eq('pinned_id', userId).eq('is_secret', false).maybeSingle(),
+    ])
+    const mine = new Set((myRooms ?? []).map(r => r.room_id as string))
+    const together = (theirRooms ?? []).some(r => mine.has(r.room_id as string))
+    if (!together && !friend && !pinnedMe) return bad('ピンできるのは、同じ部屋で勉強している人・フレンド・あなたをピンした人です', 403)
   }
   if (secret && !existing?.is_secret) {
     const plan = await getPlan(admin, userId)
     const { count } = await admin.from('pins').select('id', { count: 'exact', head: true }).eq('pinner_id', userId).eq('is_secret', true)
     if ((count ?? 0) >= LIMITS[plan].secretPins) {
       return bad(plan === 'free'
-        ? `無料プランのひみつのピンは${LIMITS.free.secretPins}人までです。プレミアムなら何人でもひみつにできます`
+        ? `無料プランのひみつのピンは${LIMITS.free.secretPins}人までです。プレミアムなら${LIMITS.premium.secretPins}人までひみつにできます`
         : 'ひみつのピンが多すぎます', 403, { upgrade: plan === 'free' })
     }
   }
@@ -170,7 +190,7 @@ export async function POST(request: Request) {
       await admin.from('pin_notices').upsert({ pinner_id: userId, pinned_id: targetId, notified_at: new Date().toISOString() }, { onConflict: 'pinner_id,pinned_id' })
       await pushToUsers(admin, [targetId], {
         title: '📌 あなたをピンした人がいます',
-        body: reason ? `${name}さん「${reason}」` : `${name}さんがあなたを勉強仲間としてピンしました`,
+        body: `${name}さんが、あなたを勉強仲間としてピンしました。ロビーで理由を見られます`,
         url: '/lobby#pins', tag: 'pinned',
       })
     }

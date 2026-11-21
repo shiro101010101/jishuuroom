@@ -8,7 +8,7 @@ import styles from './Premium.module.css'
 export default function PremiumCheckout({ mode, ready, monthlyYen = 0, yearlyYen = 0 }: {
   mode: 'subscribe' | 'manage'; ready: boolean; monthlyYen?: number; yearlyYen?: number
 }) {
-  const [interval, setInterval] = useState<'monthly' | 'yearly'>('yearly')
+  const [interval, setInterval] = useState<'monthly' | 'yearly'>('monthly')
   const [birth, setBirth] = useState('')
   const [guardian, setGuardian] = useState(false)
   const [agree, setAgree] = useState(false)
@@ -24,6 +24,8 @@ export default function PremiumCheckout({ mode, ready, monthlyYen = 0, yearlyYen
     return a
   })()
   const minor = age !== null && age < 18
+  // 18歳未満は月額だけ
+  const effInterval = minor ? 'monthly' : interval
 
   async function go(path: string, body?: unknown) {
     setBusy(true); setError(null)
@@ -44,36 +46,42 @@ export default function PremiumCheckout({ mode, ready, monthlyYen = 0, yearlyYen
     )
   }
 
-  const price = interval === 'yearly' ? yearlyYen : monthlyYen
+  const price = effInterval === 'yearly' ? yearlyYen : monthlyYen
   const canSubmit = ready && !busy && agree && age !== null && age >= 13 && (!minor || guardian)
 
   return (
     <div className={styles.card}>
       <div className={styles.cardTitle}>お申し込み</div>
       <div className={styles.seg} role="radiogroup" aria-label="プラン">
-        <button type="button" role="radio" aria-checked={interval === 'yearly'} className={interval === 'yearly' ? styles.segOn : ''} onClick={() => setInterval('yearly')}>年額 ¥{yearlyYen.toLocaleString()}</button>
-        <button type="button" role="radio" aria-checked={interval === 'monthly'} className={interval === 'monthly' ? styles.segOn : ''} onClick={() => setInterval('monthly')}>月額 ¥{monthlyYen.toLocaleString()}</button>
+        <button type="button" role="radio" aria-checked={effInterval === 'monthly'} className={effInterval === 'monthly' ? styles.segOn : ''} onClick={() => setInterval('monthly')}>月額 ¥{monthlyYen.toLocaleString()}</button>
+        <button type="button" role="radio" aria-checked={effInterval === 'yearly'} disabled={minor} className={effInterval === 'yearly' ? styles.segOn : ''} onClick={() => setInterval('yearly')}>年額 ¥{yearlyYen.toLocaleString()}</button>
       </div>
 
       <label className={styles.label}>
         生年月日
         <input type="date" className={styles.input} value={birth} max={new Date().toISOString().slice(0, 10)} onChange={e => setBirth(e.target.value)}/>
       </label>
+      <p className={styles.small}>
+        生年月日を偽って申し込むと、あとで未成年であることを理由に取り消せなくなることがあります。18歳未満の方は、必ず保護者の方と一緒に申し込んでください。一度入力した生年月日は変更できません。
+      </p>
       {age !== null && age < 13 && <p className={styles.error}>13歳未満の方は申し込めません。</p>}
       {minor && age! >= 13 && (
         <label className={styles.check}>
           <input type="checkbox" checked={guardian} onChange={e => setGuardian(e.target.checked)}/>
-          <span>保護者の方の同意を得ています（18歳未満の方は、保護者の同意がないと申し込めません）</span>
+          <span>保護者の方の同意を得ています（18歳未満の方は、保護者の同意がないと申し込めません。月額プランだけ申し込めます）</span>
         </label>
       )}
 
       <div className={styles.confirm}>
         <div className={styles.confirmTitle}>お申し込み内容の確認</div>
         <dl>
-          <dt>お支払い金額</dt><dd>¥{price.toLocaleString()}（税込）／{interval === 'yearly' ? '1年' : '1か月'}</dd>
-          <dt>お支払い時期</dt><dd>今日 初回分を請求し、以後{interval === 'yearly' ? '1年' : '1か月'}ごとに自動で更新・請求します</dd>
-          <dt>契約期間</dt><dd>{interval === 'yearly' ? '1年' : '1か月'}（解約するまで自動更新）</dd>
-          <dt>解約方法</dt><dd>このページの「お支払いの管理・解約」からいつでも解約できます。次の更新日以降は請求されません。日割り・返金はありません</dd>
+          <dt>内容</dt><dd>プレミアム（勉強会の主催10個まで・ひみつのピン100人まで・Premiumバッジ）</dd>
+          <dt>お支払い金額</dt><dd>¥{price.toLocaleString()}（税込）／{effInterval === 'yearly' ? '1年' : '1か月'}</dd>
+          <dt>お支払い方法</dt><dd>クレジットカードなど（決済代行：Stripe）</dd>
+          <dt>お支払い時期</dt><dd>今日 初回分を請求し、以後{effInterval === 'yearly' ? '1年' : '1か月'}ごとに自動で更新・請求します</dd>
+          <dt>提供時期</dt><dd>決済の完了後、すぐに使えます</dd>
+          <dt>契約期間</dt><dd>{effInterval === 'yearly' ? '1年' : '1か月'}（解約するまで同じ期間で自動更新）</dd>
+          <dt>解約方法</dt><dd>このページの「お支払いの管理・解約」からいつでも解約できます。次回更新日の前までに解約すれば、次回以降は請求されません。お支払い済みの料金の返金・日割りはありません（法令で認められる場合を除く）</dd>
         </dl>
       </div>
 
@@ -84,10 +92,10 @@ export default function PremiumCheckout({ mode, ready, monthlyYen = 0, yearlyYen
 
       {error && <p className={styles.error}>{error}</p>}
       <button type="button" className={styles.primary} disabled={!canSubmit}
-        onClick={() => go('/api/billing/checkout', { interval, birthDate: birth, guardianConsent: guardian, agree })}>
+        onClick={() => go('/api/billing/checkout', { interval: effInterval, birthDate: birth, guardianConsent: guardian, agree })}>
         {busy ? '決済ページへ移動中…' : `¥${price.toLocaleString()} で申し込む（決済ページへ）`}
       </button>
-      <p className={styles.small}>決済は Stripe の安全なページで行います。カード番号は当サービスに保存されません。</p>
+      <p className={styles.small}>決済は Stripe の安全なページで行います。カード番号は当サービスに保存されません。クレジットカードは名義人ご本人の同意を得て使ってください（保護者のカードを使う場合は、保護者の方が操作してください）。</p>
     </div>
   )
 }

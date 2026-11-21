@@ -37,7 +37,7 @@ export default function PinsBox({ demoData }: { demoData?: unknown } = {}) {
       const res = await fetch('/api/pins', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ targetId: p.id }) })
       const d = await res.json().catch(() => ({}))
       if (!res.ok) { setMsg('❌ ' + (d.error ?? 'ピンできませんでした')); return }
-      setMsg(d.mutual ? `🤝 ${p.name}さんとマッチしました！フレンドになりました` : `📌 ${p.name}さんをピンしました`)
+      setMsg(d.mutual ? `🤝 ${p.name}さんと勉強仲間になりました！フレンドとしてメッセージできます` : `📌 ${p.name}さんをピンしました`)
       await load()
     } finally { setBusy(null) }
   }
@@ -55,8 +55,8 @@ export default function PinsBox({ demoData }: { demoData?: unknown } = {}) {
             <div className={styles.secret}>
               <span className={styles.secretIcon}>🤫</span>
               <span>
-                <b>ひみつのピンが {data.secretCount} 件届いています</b>
-                <small>誰からかは、あなたもその人をピンしたときにわかります。気になる人をピンしてみよう。</small>
+                <b>あなたの頑張りを見ている人がいます（🤫 {data.secretCount}件）</b>
+                <small>ひみつのピンです。誰からかは、あなたもその人をピンしたときにわかります。</small>
               </span>
             </div>
           )}
@@ -79,7 +79,7 @@ export default function PinsBox({ demoData }: { demoData?: unknown } = {}) {
 
           {matches.length > 0 && (
             <div className={styles.group}>
-              <div className={styles.label}>🤝 マッチした勉強仲間</div>
+              <div className={styles.label}>🤝 勉強仲間（お互いにピン）</div>
               {matches.slice(0, 12).map(p => (
                 <div key={p.id} className={styles.row}>
                   <Avatar p={p}/>
@@ -94,14 +94,14 @@ export default function PinsBox({ demoData }: { demoData?: unknown } = {}) {
 
           {data.secretCount === 0 && waiting.length === 0 && matches.length === 0 && (
             <div className={styles.empty}>
-              部屋で気になる勉強仲間を 📌 ピンしてみよう。<br/>お互いにピンするとマッチして、フレンドになれます。<br/>ひみつのピンなら、相手には知られません。
+              部屋で一緒にがんばりたい人を 📌 ピンしてみよう。<br/>お互いにピンすると勉強仲間になり、フレンドになれます。<br/>ひみつのピンなら、相手には知られません。
             </div>
           )}
           <div className={styles.foot}>
-            ピン中 {data.myPins.length}人 · ひみつ {data.myPins.filter(p => p.secret).length}/{data.plan === 'premium' ? '無制限' : data.secretLimit}
-            {data.plan === 'free' && <a href="/premium" className={styles.upgrade}>✦ ひみつのピンを無制限に</a>}
+            ピン中 {data.myPins.length}人 · ひみつ {data.myPins.filter(p => p.secret).length}/{data.secretLimit}
+            {data.plan === 'free' && <a href="/premium" className={styles.upgrade}>✦ ひみつのピンを100人まで</a>}
           </div>
-          {msg && <div className={styles.msg} role="status">{msg}</div>}
+          <div className={styles.msg} role="status" aria-live="polite">{msg}</div>
         </>
       )}
     </section>

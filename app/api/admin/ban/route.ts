@@ -3,6 +3,7 @@ import { auth } from '@/auth'
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { UUID_RE } from '@/lib/roomAccess'
+import { cancelSubscriptionFor } from '@/lib/stripe'
 
 export async function POST(request: Request) {
   const session = await auth()
@@ -38,5 +39,8 @@ export async function POST(request: Request) {
       { onConflict: 'provider,provider_id', ignoreDuplicates: true })
   }
   await admin.from('room_members').delete().eq('user_id', targetUserId)
+  // BAN した人への請求は止める（プレミアムのサブスクを解約。返金が必要なら Stripe ダッシュボードで行う）
+  const { data: sub } = await admin.from('subscriptions').select('stripe_subscription_id').eq('user_id', targetUserId).maybeSingle()
+  await cancelSubscriptionFor(sub?.stripe_subscription_id as string | undefined)
   return NextResponse.json({ success: true })
 }

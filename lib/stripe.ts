@@ -3,7 +3,8 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
 
 export function stripeConfigured() {
-  return !!(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_PRICE_MONTHLY && process.env.STRIPE_PRICE_YEARLY)
+  // Webhook の秘密鍵が無いと「払ったのにプレミアムにならない」ので、それも必須
+  return !!(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_WEBHOOK_SECRET && process.env.STRIPE_PRICE_MONTHLY && process.env.STRIPE_PRICE_YEARLY)
 }
 
 /** { a: { b: 1 } } → "a[b]=1"（Stripe のフォーム形式） */
@@ -22,14 +23,17 @@ function encode(obj: Record<string, unknown>, prefix = ''): string[] {
   return out
 }
 
-export async function stripe<T = Record<string, unknown>>(method: 'GET' | 'POST', path: string, params?: Record<string, unknown>): Promise<T> {
+export async function stripe<T = Record<string, unknown>>(method: 'GET' | 'POST' | 'DELETE', path: string, params?: Record<string, unknown>, opts: { idempotencyKey?: string } = {}): Promise<T> {
   const key = process.env.STRIPE_SECRET_KEY
   if (!key) throw new Error('Stripe is not configured')
   const body = params ? encode(params).join('&') : undefined
-  const url = `https://api.stripe.com/v1/${path}${method === 'GET' && body ? `?${body}` : ''}`
+  const url = `https://api.stripe.com/v1/${path}${method !== 'POST' && body ? `?${body}` : ''}`
   const res = await fetch(url, {
     method,
-    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/x-www-form-urlencoded', 'Stripe-Version': '2024-06-20' },
+    headers: {
+      Authorization: `Bearer ${key}`, 'Content-Type': 'application/x-www-form-urlencoded', 'Stripe-Version': '2024-06-20',
+      ...(opts.idempotencyKey ? { 'Idempotency-Key': opts.idempotencyKey } : {}),
+    },
     body: method === 'POST' ? body : undefined,
     cache: 'no-store',
   })
@@ -53,6 +57,15 @@ export function verifyStripeSignature(payload: string, header: string | null, se
     const a = Buffer.from(sig, 'hex'), b = Buffer.from(expected, 'hex')
     return a.length === b.length && timingSafeEqual(a, b)
   })
+}
+
+/** 有効（プレミアムを使える）とみなすサブスクの状態 */
+export const ACTIVE_SUB_STATUSES = new Set(['active', 'trialing', 'past_due'])
+
+/** そのユーザーの Stripe サブスクを解約する（BAN・退会のとき）。無ければ何もしない */
+export async function cancelSubscriptionFor(subscriptionId: string | null | undefined) {
+  if (!subscriptionId || !process.env.STRIPE_SECRET_KEY) return
+  try { await stripe('DELETE', `subscriptions/${subscriptionId}`) } catch (e) { console.error('cancel subscription failed:', e) }
 }
 
 export type StripeSubscription = {

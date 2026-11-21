@@ -85,7 +85,9 @@ export default function ProfileEditModal({ profile, lang = 'ja', onClose, onSave
     setSaving(true); setError('')
     const form = new FormData()
     form.set('display_name', n); form.set('bio', b)
-    form.set('gender', gender); form.set('instagram', instagram.trim())
+    // 性別・Instagram は変えたときだけ送る（読み込めていない画面から保存しても消えないように）
+    if (gender !== (profile.gender ?? '')) form.set('gender', gender)
+    if (instagram.trim() !== (profile.instagram ?? '')) form.set('instagram', instagram.trim())
     if (image) form.set('avatar', image, image.type === 'image/webp' ? 'avatar.webp' : 'avatar.jpg')
     else if (removed) form.set('remove_avatar', '1')
     try {

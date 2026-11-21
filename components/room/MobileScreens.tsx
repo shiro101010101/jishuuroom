@@ -47,6 +47,8 @@ type Props = {
   /** ピンの状態（none / pinned / secret / pair）とピンのボタン */
   pinState?: (userId: string) => 'none' | 'pinned' | 'secret' | 'pair'
   onPin?: (userId: string, name: string) => void
+  /** カードに 1 つだけ出す印（🪑 きょうのとなり・🎯 同じ目標 など） */
+  seatTag?: (userId: string) => string | null
   onAcceptFriend: (friendshipId: string) => void
   onDeclineFriend?: (friendshipId: string) => void
   onToggleBgm: (id: string) => void
@@ -99,7 +101,7 @@ export default function MobileScreens({
   unreadCounts, tasks, localStream, remoteStreams, cameraOn, bgmPlaying,
   volume, bgmGainRef, ambience, notifications, weeklyStats, currentTask,
   onToggleCamera, onAddTask, onCompleteTask, onDeleteTask,
-  onOpenChat, onBlock, onReport, onViewProfile, pinState, onPin, onAcceptFriend, onDeclineFriend,
+  onOpenChat, onBlock, onReport, onViewProfile, pinState, onPin, seatTag, onAcceptFriend, onDeclineFriend,
   onToggleBgm, onSetVolume, onJoinRoom, onLeaveRoom,
   todaySeconds, pomosToday, tasksDoneToday,
   lang, onUpdateShare,
@@ -285,13 +287,17 @@ export default function MobileScreens({
                       </div>}
                   {onPin && (() => {
                     const st = pinState?.(m.user_id) ?? 'none'
-                    const label = st === 'pair' ? '🤝 ペア' : st === 'secret' ? '🤫 ひみつ' : st === 'pinned' ? '📌 ピン中' : '📌 ピン'
+                    const label = st === 'pair' ? '🤝 仲間' : st === 'secret' ? '🤫 ひみつ' : st === 'pinned' ? '📌 ピン中' : '📌 ピン'
+                    const aria = lang !== 'ja' ? `Pin ${mp.display_name}`
+                      : st === 'pair' ? `${mp.display_name}さんとは勉強仲間です。ピンを編集`
+                      : st === 'none' ? `${mp.display_name}さんをピン` : `${mp.display_name}さんのピンを編集・外す`
                     return (
                       <button type="button" className={`${styles.pinMini} ${st !== 'none' ? styles.pinMiniOn : ''} ${st === 'pair' ? styles.pinMiniPair : ''}`}
-                        aria-pressed={st !== 'none'} aria-label={lang === 'ja' ? `${mp.display_name}をピン` : `Pin ${mp.display_name}`}
-                        onClick={e => { e.stopPropagation(); onPin(m.user_id, mp.display_name) }}>{lang === 'ja' ? label : label.replace('ピン中', 'Pinned').replace('ピン', 'Pin').replace('ペア', 'Pair').replace('ひみつ', 'Secret')}</button>
+                        aria-pressed={st !== 'none'} aria-label={aria}
+                        onClick={e => { e.stopPropagation(); onPin(m.user_id, mp.display_name) }}>{lang === 'ja' ? label : label.replace('ピン中', 'Pinned').replace('ピン', 'Pin').replace('仲間', 'Buddy').replace('ひみつ', 'Secret')}</button>
                     )
                   })()}
+                  {seatTag?.(m.user_id) && <div className={styles.seatTag}>{seatTag(m.user_id)}</div>}
                   <div className={styles.camName}>
                     <span className={styles.camNameTxt}>{mp.display_name.slice(0, 6)}</span>
                     <button className={styles.reportMiniBtn} aria-label={lang === 'ja' ? `${mp.display_name} を通報` : `Report ${mp.display_name}`}

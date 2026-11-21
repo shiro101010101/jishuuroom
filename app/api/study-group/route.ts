@@ -13,6 +13,8 @@ import {
   MAX_DURATION, MIN_DURATION, MAX_TITLE, firstWeeklyStart, jstToUtc, nextOccurrence, parseRepeatDays,
 } from '@/lib/studyGroups'
 import { filterInvitableFriends, inviteToSession, pushToUsers, type SessionRow } from '@/lib/studyGroupsServer'
+import { blockedSet, claimNotice, isBlockedBetween } from '@/lib/noticeLog'
+import { canEnterRoom } from '@/lib/roomAccess'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -51,7 +53,8 @@ export async function GET() {
   const now = Date.now()
 
   const [hosted, parts, invites, rooms, friendRows, publicRooms] = await Promise.all([
-    admin.from('scheduled_sessions').select(SESSION_COLS).eq('host_id', userId).limit(50),
+    admin.from('scheduled_sessions').select(SESSION_COLS).eq('host_id', userId)
+      .or(`repeat_days.neq.{},scheduled_at.gte.${new Date(now - MAX_DURATION * 60_000).toISOString()}`).order('scheduled_at', { ascending: false }).limit(50),
     admin.from('session_participants').select('session_id').eq('user_id', userId).limit(200),
     admin.from('session_invites').select('session_id, status').eq('user_id', userId).limit(200),
     getMyPrivateRooms(admin, userId),
@@ -76,7 +79,10 @@ export async function GET() {
   const all = new Map<string, SessionRow>()
   for (const s of [...(hosted.data ?? []), ...(byId.data ?? []), ...(byRoom.data ?? [])] as SessionRow[]) all.set(s.id, s)
 
+  // ブロック関係の人の勉強会・参加者は見せない
+  const blocked = await blockedSet(admin, userId)
   const active = [...all.values()]
+    .filter(s => !blocked.has(s.host_id))
     .map(s => ({ s, start: nextOccurrence(s.scheduled_at, s.repeat_days, s.duration_mins, now) }))
     .filter((x): x is { s: SessionRow; start: number } => x.start !== null)
     .sort((a, b) => a.start - b.start)
@@ -87,7 +93,7 @@ export async function GET() {
     ids.length ? admin.from('session_participants').select('session_id, user_id').in('session_id', ids).limit(1000) : Promise.resolve({ data: [] }),
     active.length ? admin.from('rooms').select('id, name, emoji, invite_code').in('id', [...new Set(active.map(x => x.s.room_id).filter(Boolean))] as string[]) : Promise.resolve({ data: [] }),
   ])
-  const friendIds = (friendRows.data ?? []).map(f => f.addressee_id as string)
+  const friendIds = (friendRows.data ?? []).map(f => f.addressee_id as string).filter(id => !blocked.has(id))
   const peopleIds = [...new Set([
     ...((participants.data ?? []) as { user_id: string }[]).map(p => p.user_id),
     ...active.map(x => x.s.host_id),
@@ -100,6 +106,7 @@ export async function GET() {
   const roomMap = new Map(((roomInfo.data ?? []) as { id: string; name: string; emoji: string | null; invite_code: string | null }[]).map(r => [r.id, r]))
   const partsBySession = new Map<string, string[]>()
   for (const p of (participants.data ?? []) as { session_id: string; user_id: string }[]) {
+    if (blocked.has(p.user_id)) continue
     partsBySession.set(p.session_id, [...(partsBySession.get(p.session_id) ?? []), p.user_id])
   }
 
@@ -164,7 +171,8 @@ export async function POST(request: Request) {
   if (start > now + MAX_AHEAD_MS) return bad('90日以内の日時を選んでください')
 
   // 主催中の勉強会の数を制限
-  const { data: mine } = await admin.from('scheduled_sessions').select('scheduled_at, duration_mins, repeat_days').eq('host_id', userId).limit(100)
+  const { data: mine } = await admin.from('scheduled_sessions').select('scheduled_at, duration_mins, repeat_days').eq('host_id', userId)
+    .or(`repeat_days.neq.{},scheduled_at.gte.${new Date(now - MAX_DURATION * 60_000).toISOString()}`).limit(500)
   const activeCount = (mine ?? []).filter(s => nextOccurrence(s.scheduled_at, s.repeat_days, s.duration_mins, now) !== null).length
   const plan = await getPlan(admin, userId)
   const limit = LIMITS[plan].hostedGroups
@@ -181,7 +189,7 @@ export async function POST(request: Request) {
   const roomId = typeof body.roomId === 'string' && body.roomId ? body.roomId : MAIN_ROOM_IDS[0]
   if (!UUID_RE.test(roomId)) return bad('部屋の指定が正しくありません')
   const { data: room } = await admin.from('rooms').select('*').eq('id', roomId).maybeSingle()
-  const okRoom = room && !room.is_archived && (!room.is_private || room.created_by === userId)
+  const okRoom = room && !room.is_archived && (await canEnterRoom(admin, room, userId))
   if (!okRoom) return bad('この部屋では勉強会を開けません', 403)
 
   const { data: session, error } = await admin.from('scheduled_sessions').insert({
@@ -224,11 +232,16 @@ export async function PATCH(request: Request) {
   switch (body.action) {
     case 'join': {
       if (!isHost && !invite && !access) return bad('この勉強会には招待されていません', 403)
-      if (s.room_id) await grantRoomAccess(admin, s.room_id, userId)
+      if (!isHost && (await isBlockedBetween(admin, userId, s.host_id))) return bad('この勉強会には参加できません', 403)
+      // 友達部屋の入室権は「参加」したときに付ける（招待されただけでは付けない）
+      if (s.room_id) {
+        const { data: r } = await admin.from('rooms').select('is_private').eq('id', s.room_id).maybeSingle()
+        if (r?.is_private) await grantRoomAccess(admin, s.room_id, userId)
+      }
       const { error } = await admin.from('session_participants').upsert({ session_id: s.id, user_id: userId }, { onConflict: 'session_id,user_id' })
       if (error) return bad('参加できませんでした', 500)
       await admin.from('session_invites').delete().eq('session_id', s.id).eq('user_id', userId)
-      if (!isHost && !part) {
+      if (!isHost && !part && !(await isBlockedBetween(admin, userId, s.host_id)) && (await claimNotice(admin, `join:${s.id}:${userId}`, 7 * 86_400_000))) {
         await pushToUsers(admin, [s.host_id], {
           title: '🙌 勉強会に参加者が増えました',
           body: `${name}さんが「${s.title}」に参加します`,

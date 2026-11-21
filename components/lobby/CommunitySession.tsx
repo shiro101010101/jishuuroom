@@ -66,7 +66,7 @@ export default function CommunitySession({ studying }: { studying: number }) {
           </div>
         )}
         {slot?.live && now != null && (
-          <div className={styles.communityCount}>のこり <b>{countdown(slot.start + LIVE_MS - now)}</b> ・ 自由学習ルームで 50 分間いっしょに集中します</div>
+          <div className={styles.communityCount}>のこり <b>{countdown(slot.start + LIVE_MS - now)}</b> ・ Room 1 で 50 分間いっしょに集中します</div>
         )}
       </div>
       <Link href={href} className={styles.communityBtn}>{slot?.live ? 'いま参加する' : 'その時間に入る'}</Link>

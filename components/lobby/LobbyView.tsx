@@ -17,6 +17,8 @@ export type LobbyViewProps = {
   name: string
   avatarUrl: string | null
   bio: string | null
+  gender?: string | null
+  instagram?: string | null
   needsGoal: boolean
   stats: MyStats
   quickRoom: RoomLite | undefined
@@ -36,11 +38,11 @@ const fmt = (s: number) => {
   return h > 0 ? `${h}時間${String(m).padStart(2, '0')}分` : `${m}分`
 }
 
-export default function LobbyView({ name, avatarUrl, bio, needsGoal, stats, quickRoom, firstTime, counts, invite, privateRooms, rooms, top, userId, demo = false }: LobbyViewProps) {
+export default function LobbyView({ name, avatarUrl, bio, gender = null, instagram = null, needsGoal, stats, quickRoom, firstTime, counts, invite, privateRooms, rooms, top, userId, demo = false }: LobbyViewProps) {
   const roomHref = (id: string, q = '') => demo ? '/demo/room' : `/room/${id}${q}`
   return (
     <div className={styles.page}>
-      <LobbyHeader profile={{ display_name: name, avatar_url: avatarUrl, bio }}/>
+      <LobbyHeader profile={{ display_name: name, avatar_url: avatarUrl, bio, gender, instagram }}/>
       <main className={styles.main}>
         {needsGoal && <GoalOnboarding/>}
 
@@ -67,7 +69,7 @@ export default function LobbyView({ name, avatarUrl, bio, needsGoal, stats, quic
           </Link>
         )}
 
-        <CommunitySession studying={counts[COMMUNITY_ROOM_ID]?.total ?? 0}/>
+        <CommunitySession studying={counts[COMMUNITY_ROOM_ID]?.studying ?? 0}/>
 
         {invite === 'invalid' && <div className={styles.notice}>招待リンクが見つかりませんでした。部屋が削除されたか、リンクが間違っている可能性があります。</div>}
         {invite === 'denied' && <div className={styles.notice}>この部屋は友達だけの部屋です。招待リンクを送ってもらってください。</div>}

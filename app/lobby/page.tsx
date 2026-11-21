@@ -27,6 +27,8 @@ export default async function LobbyPage({ searchParams }: { searchParams: Promis
     // 目標は別に読む（migration_exam.sql 未実行で列が無くても、BAN 判定などは止めない）
     admin.from('profiles').select('goal_exam').eq('id', userId).maybeSingle(),
   ])
+  // 性別・Instagram（プロフィール編集の初期値）。列が無い DB でも止めない
+  const extraRes = await admin.from('profiles').select('gender, instagram').eq('id', userId).maybeSingle()
   if (profile?.is_banned) redirect('/banned')
 
   const counts: Record<string, { total: number; studying: number }> = {}
@@ -52,6 +54,8 @@ export default async function LobbyPage({ searchParams }: { searchParams: Promis
       name={name}
       avatarUrl={profile?.avatar_url ?? session.user?.image ?? null}
       bio={profile?.bio ?? null}
+      gender={extraRes.error ? null : (extraRes.data?.gender ?? null)}
+      instagram={extraRes.error ? null : (extraRes.data?.instagram ?? null)}
       needsGoal={needsGoal}
       stats={stats}
       quickRoom={quickRoom}

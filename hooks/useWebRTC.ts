@@ -29,9 +29,11 @@ type Peer = {
 type Signal = { id: string; room_id?: string; from_user: string; type: string; payload: any }
 
 /**
- * @param memberIds 今ルームに接続している他のメンバー（自分以外）
+ * @param memberIds 今ルームに接続している他のメンバー（自分以外）。この人たちからの接続は受け入れる
+ * @param initiateIds 自分から映像をつなぎにいく相手（人数の上限つき）。省略時は memberIds 全員。
+ *   受け入れ側を全員にしておくことで、お互いの「上位 N 人」がずれても、片方からの接続で映像がつながる
  */
-export function useWebRTC(roomId: string, userId: string, cameraOn: boolean, memberIds: string[] = []) {
+export function useWebRTC(roomId: string, userId: string, cameraOn: boolean, memberIds: string[] = [], initiateIds?: string[]) {
   const supabase = createClient()
   const localStreamRef = useRef<MediaStream | null>(null)
   const peersRef = useRef<Map<string, Peer>>(new Map())
@@ -204,11 +206,12 @@ export function useWebRTC(roomId: string, userId: string, cameraOn: boolean, mem
 
   // カメラONの間は、ルームの全員（後から来た人も含む）に映像を送る
   const memberKey = [...memberIds].sort().join(',')
+  const initiateKey = (initiateIds ?? memberIds).join(',')
   useEffect(() => {
-    if (localStream) memberIds.forEach(id => { if (id !== userId) ensurePeer(id) })
+    if (localStream) (initiateIds ?? memberIds).forEach(id => { if (id !== userId && memberIds.includes(id)) ensurePeer(id) })
     // いなくなった人との接続は閉じる
     peersRef.current.forEach((_, id) => { if (!memberIds.includes(id)) closePeer(id) })
-  }, [localStream, memberKey, relayStatus])
+  }, [localStream, memberKey, initiateKey, relayStatus])
 
   function dispatchSignal(s: Signal) {
     // 中継サーバーの準備ができるまでは保留（準備できたら下の effect で処理する）

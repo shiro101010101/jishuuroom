@@ -16,10 +16,10 @@ export const dynamic = 'force-dynamic'
 const FEATURES: { free: string; premium: string; label: string }[] = [
   { label: '自習室への入室・カメラ・タイマー', free: '✓', premium: '✓' },
   { label: '勉強時間の記録・ランキング・連続日数', free: '✓', premium: '✓' },
-  { label: 'ピン・マッチング・フレンド・メッセージ', free: '✓', premium: '✓' },
+  { label: 'ピン・勉強仲間・フレンド・メッセージ', free: '✓', premium: '✓' },
   { label: '勉強会への参加・開始前の通知', free: '✓', premium: '✓' },
-  { label: 'ひみつのピン', free: `${LIMITS.free.secretPins}人まで`, premium: '無制限' },
   { label: '主催できる勉強会（くり返しを含む）', free: `${LIMITS.free.hostedGroups}個まで`, premium: `${LIMITS.premium.hostedGroups}個まで` },
+  { label: 'ひみつのピン', free: `${LIMITS.free.secretPins}人まで`, premium: `${LIMITS.premium.secretPins}人まで` },
   { label: 'プロフィールの ✦ Premium バッジ', free: '—', premium: '✓' },
   { label: 'これから追加する機能の先行利用', free: '—', premium: '✓' },
 ]
@@ -45,7 +45,7 @@ export default async function PremiumPage({ searchParams }: { searchParams: Prom
         <Link href={userId ? '/lobby' : '/'} className={styles.back}>← {userId ? 'ロビーに戻る' : `${SITE.name} に戻る`}</Link>
         <div className={styles.hero}>
           <div className={styles.badge}>✦ Premium</div>
-          <h1 className={styles.title}>もっと楽しく、続けられる自習室へ</h1>
+          <h1 className={styles.title}>毎日の勉強を、仲間と続けやすく</h1>
           <p className={styles.lead}>基本の機能はずっと無料です。プレミアムは、ひみつのピンや勉強会の主催をたくさん使いたい人と、{SITE.name} を応援してくれる人のためのプランです。</p>
         </div>
 
@@ -55,9 +55,9 @@ export default async function PremiumPage({ searchParams }: { searchParams: Prom
         <div className={styles.prices}>
           <div className={styles.price}><div className={styles.priceName}>月額</div><div className={styles.priceVal}>¥{PRICES.monthly.yen.toLocaleString()}<span>/月</span></div></div>
           <div className={`${styles.price} ${styles.priceBest}`}>
-            <div className={styles.priceTag}>いちばんお得</div>
+            <div className={styles.priceTag}>12か月続けるなら割安</div>
             <div className={styles.priceName}>年額</div><div className={styles.priceVal}>¥{PRICES.yearly.yen.toLocaleString()}<span>/年</span></div>
-            <div className={styles.priceSub}>月あたり約 ¥{Math.round(PRICES.yearly.yen / 12)}</div>
+            <div className={styles.priceSub}>月額を12か月続けた場合（¥{(PRICES.monthly.yen * 12).toLocaleString()}）より ¥{(PRICES.monthly.yen * 12 - PRICES.yearly.yen).toLocaleString()} 安くなります。途中で解約しても返金はありません</div>
           </div>
         </div>
 

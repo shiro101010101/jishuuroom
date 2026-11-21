@@ -120,14 +120,21 @@ export function useInteractions(userId: string, roomId: string) {
               .eq('id', pinner_id)
               .single()
             if (profile) {
-              setMutualPinNotif(`🤝 ${(profile as any).display_name}さんとマッチしました！勉強仲間になりました`)
+              setMutualPinNotif(`🤝 ${(profile as any).display_name}さんと勉強仲間になりました！一緒にがんばろう`)
               setTimeout(() => setMutualPinNotif(null), 6000)
             }
           }
         })
       .subscribe()
 
+    // 相手がピンを外した・ひみつに変えたことは通知が来ないので、画面に戻ったときと 1 分ごとに読み直す
+    const refresh = () => { if (document.visibilityState === 'visible') fetchPins() }
+    const timer = setInterval(refresh, 60_000)
+    document.addEventListener('visibilitychange', refresh)
+
     return () => {
+      clearInterval(timer)
+      document.removeEventListener('visibilitychange', refresh)
       try { supabase.getChannels().find((c:any)=>c===ch)?.unsubscribe() } catch{}
       try { supabase.getChannels().find((c:any)=>c===pinCh)?.unsubscribe() } catch{}
     }
@@ -174,8 +181,8 @@ export function useInteractions(userId: string, roomId: string) {
       if (data.mutual && !unpin) {
         const name = data.targetName ?? ''
         setMutualPinNotif(data.revealedSecret
-          ? `🤫→🤝 実は${name}さんも、ひみつであなたをピンしていました！マッチ成立`
-          : `🤝 ${name}さんとマッチしました！勉強仲間になりました`)
+          ? `🤫→🤝 実は${name}さんも、あなたをピンしていました！勉強仲間になりました`
+          : `🤝 ${name}さんと勉強仲間になりました！一緒にがんばろう`)
         setTimeout(() => setMutualPinNotif(null), 6000)
       }
       await fetchPins()
