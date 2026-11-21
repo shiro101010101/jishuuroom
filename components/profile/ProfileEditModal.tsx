@@ -151,14 +151,14 @@ export default function ProfileEditModal({ profile, lang = 'ja', onClose, onSave
             <option value="male">{ja ? '男性' : 'Male'}</option>
             <option value="other">{ja ? 'その他' : 'Other'}</option>
           </select>
-          <div className={styles.note}>{ja ? 'プロフィールを開いた人にだけ表示されます' : 'Shown only on your profile card'}</div>
+          <div className={styles.note}>{ja ? '同じ部屋にいる人・フレンド・ピンでつながった人がプロフィールを開いたときに表示されます' : 'Shown to people in your room, friends and pin connections'}</div>
         </div>
 
         <div className={styles.field}>
           <div className={styles.label}><span>Instagram{ja ? '（任意）' : ' (optional)'}</span></div>
           <input className={styles.input} value={instagram} maxLength={60} inputMode="url" autoCapitalize="none" autoCorrect="off"
             onChange={e => setInstagram(e.target.value)} placeholder={ja ? 'ユーザー名（例 study_taro）' : 'username'}/>
-          <div className={styles.note}>{ja ? 'フレンドとマッチした相手にだけ見えます' : 'Visible only to friends and matches'}</div>
+          <div className={styles.note}>{ja ? 'フレンドと勉強仲間（お互いにピン）にだけ表示されます' : 'Visible only to friends and study buddies'}</div>
         </div>
 
         {error && <div className={styles.error}>{error}</div>}

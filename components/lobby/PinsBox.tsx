@@ -55,7 +55,7 @@ export default function PinsBox({ demoData }: { demoData?: unknown } = {}) {
             <div className={styles.secret}>
               <span className={styles.secretIcon}>🤫</span>
               <span>
-                <b>あなたの頑張りを見ている人がいます（🤫 {data.secretCount}件）</b>
+                <b>🤫 ひみつのピンが {data.secretCount}件 届いています</b>
                 <small>ひみつのピンです。誰からかは、あなたもその人をピンしたときにわかります。</small>
               </span>
             </div>
@@ -64,6 +64,7 @@ export default function PinsBox({ demoData }: { demoData?: unknown } = {}) {
           {waiting.length > 0 && (
             <div className={styles.group}>
               <div className={styles.label}>あなたをピンした人</div>
+              <div className={styles.note}>ピンを返すと勉強仲間（フレンド）になり、メッセージや Instagram が見られるようになります</div>
               {waiting.slice(0, 8).map(p => (
                 <div key={p.id} className={styles.row}>
                   <Avatar p={p}/>
@@ -71,7 +72,7 @@ export default function PinsBox({ demoData }: { demoData?: unknown } = {}) {
                     <span className={styles.name}>{p.name}{p.goal && examLabel(p.goal) && <span className={styles.goal}>🎯 {examLabel(p.goal)}</span>}</span>
                     {p.reason && <span className={styles.reason}>「{p.reason}」</span>}
                   </span>
-                  <button type="button" className={styles.back} disabled={busy === p.id} onClick={() => pinBack(p)}>ピンを返す</button>
+                  <button type="button" className={styles.back} disabled={busy === p.id} onClick={() => pinBack(p)}>ピンを返して勉強仲間になる</button>
                 </div>
               ))}
             </div>

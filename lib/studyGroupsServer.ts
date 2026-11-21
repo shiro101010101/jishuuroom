@@ -94,7 +94,7 @@ export async function inviteToSession(
 
   const repeat = formatRepeat(session.repeat_days)
   const when = repeat ? `${repeat} ${formatJst(startAt).split(' ')[1]}〜（次回 ${formatJst(startAt)}）` : formatJst(startAt)
-  const content = `📅 勉強会「${session.title}」に招待しました！\n${when}・${session.duration_mins}分\nロビーの「友達との勉強会」から参加できます\n/lobby#study-groups`.slice(0, 500)
+  const content = `📅 勉強会「${session.title}」に招待しました！\n${when}・${session.duration_mins}分\nロビーの「フレンドと勉強会」から参加できます\n/lobby#study-groups`.slice(0, 500)
   await admin.from('messages').insert(notify.map(id => ({ sender_id: inviter.id, receiver_id: id, content })))
   await pushToUsers(admin, notify, {
     title: `📅 ${inviter.name}さんから勉強会の招待`,

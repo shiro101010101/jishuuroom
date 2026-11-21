@@ -36,6 +36,12 @@ export async function POST(request: Request) {
 
   let link = `/room/${room.id}`
   if (room.is_private) {
+    // 部屋を作った人とブロック関係にある人には、入室権を付けない
+    if (room.created_by && room.created_by !== friendId) {
+      const { data: ownerBlock } = await admin.from('blocks').select('blocker_id')
+        .or(`and(blocker_id.eq.${room.created_by},blocked_id.eq.${friendId}),and(blocker_id.eq.${friendId},blocked_id.eq.${room.created_by})`).limit(1)
+      if ((ownerBlock ?? []).length > 0) return bad('招待を送れませんでした', 403)
+    }
     await grantRoomAccess(admin, room.id, friendId)
     if (room.invite_code) link = `/invite/${room.invite_code}`
   }

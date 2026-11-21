@@ -21,7 +21,6 @@ const FEATURES: { free: string; premium: string; label: string }[] = [
   { label: '主催できる勉強会（くり返しを含む）', free: `${LIMITS.free.hostedGroups}個まで`, premium: `${LIMITS.premium.hostedGroups}個まで` },
   { label: 'ひみつのピン', free: `${LIMITS.free.secretPins}人まで`, premium: `${LIMITS.premium.secretPins}人まで` },
   { label: 'プロフィールの ✦ Premium バッジ', free: '—', premium: '✓' },
-  { label: 'これから追加する機能の先行利用', free: '—', premium: '✓' },
 ]
 
 export default async function PremiumPage({ searchParams }: { searchParams: Promise<{ status?: string }> }) {
@@ -29,12 +28,16 @@ export default async function PremiumPage({ searchParams }: { searchParams: Prom
   const session = await auth()
   const userId = session?.user?.id ?? null
   let plan: 'free' | 'premium' = 'free'
+  let lockedBirth: string | null = null
   let sub: { status: string; current_period_end: string | null; cancel_at_period_end: boolean; plan_interval: string | null } | null = null
   if (userId) {
     const admin = createAdminClient()
     plan = await getPlan(admin, userId)
-    const { data } = await admin.from('subscriptions').select('status, current_period_end, cancel_at_period_end, plan_interval').eq('user_id', userId).maybeSingle()
+    const { data } = await admin.from('subscriptions').select('status, current_period_end, cancel_at_period_end, plan_interval, stripe_subscription_id').eq('user_id', userId).maybeSingle()
     sub = data ?? null
+    // 以前に申し込みで入力した生年月日（変更不可）
+    const { data: c } = !data?.stripe_subscription_id ? { data: null } : await admin.from('billing_consents').select('birth_date').eq('user_id', userId).order('created_at', { ascending: true }).limit(1).maybeSingle()
+    lockedBirth = (c?.birth_date as string | undefined) ?? null
   }
   const ready = stripeConfigured() && legalReady()
   const end = sub?.current_period_end ? new Date(sub.current_period_end) : null
@@ -80,7 +83,7 @@ export default async function PremiumPage({ searchParams }: { searchParams: Prom
         ) : !ready ? (
           <div className={styles.card}><div className={styles.cardTitle}>プレミアムは準備中です</div><p className={styles.small}>もうしばらくお待ちください。</p></div>
         ) : (
-          <PremiumCheckout mode="subscribe" ready={ready} monthlyYen={PRICES.monthly.yen} yearlyYen={PRICES.yearly.yen}/>
+          <PremiumCheckout mode="subscribe" ready={ready} monthlyYen={PRICES.monthly.yen} yearlyYen={PRICES.yearly.yen} lockedBirth={lockedBirth}/>
         )}
 
         <p className={styles.foot}>

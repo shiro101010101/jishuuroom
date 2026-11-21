@@ -184,10 +184,6 @@ export type Database = {
         Args: { p_receiver_id: string; p_room_id: string; p_emoji: string }
         Returns: { success: boolean; error?: string; next_available?: string }
       }
-      toggle_pin: {
-        Args: { p_target_id: string }
-        Returns: { pinned: boolean; mutual: boolean }
-      }
       ban_user: {
         Args: { target_user_id: string; reason: string }
         Returns: void

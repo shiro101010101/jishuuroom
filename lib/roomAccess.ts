@@ -58,3 +58,19 @@ export async function listPublicRooms(admin: SupabaseClient): Promise<PublicRoom
   const { data } = await admin.from('rooms').select('id, name, description, emoji').eq('is_private', false).order('name')
   return (data ?? []) as PublicRoom[]
 }
+
+/**
+ * 2 人がいま同じ部屋にいるか：同じ部屋の在室記録があり、2 人とも最近（3 分以内）アクセスしている
+ * （在室記録だけだと、抜けたのに残った記録も数えてしまうため。last_seen は部屋にいる間 1 分ごとに更新される）
+ */
+export async function sharesRoomNow(admin: SupabaseClient, a: string, b: string): Promise<boolean> {
+  const since = new Date(Date.now() - 3 * 60_000).toISOString()
+  const [{ data: ra }, { data: rb }, { data: seen }] = await Promise.all([
+    admin.from('room_members').select('room_id').eq('user_id', a),
+    admin.from('room_members').select('room_id').eq('user_id', b),
+    admin.from('profiles').select('id').in('id', [a, b]).gte('last_seen', since),
+  ])
+  if ((seen ?? []).length < 2) return false
+  const mine = new Set((ra ?? []).map((r: { room_id: string }) => r.room_id))
+  return (rb ?? []).some((r: { room_id: string }) => mine.has(r.room_id))
+}

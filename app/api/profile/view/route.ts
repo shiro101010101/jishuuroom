@@ -3,7 +3,7 @@
 import { auth } from '@/auth'
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { UUID_RE } from '@/lib/roomAccess'
+import { UUID_RE, sharesRoomNow } from '@/lib/roomAccess'
 import { getPlan } from '@/lib/premium'
 
 export const dynamic = 'force-dynamic'
@@ -30,17 +30,15 @@ export async function GET(request: Request) {
   let close = id === me
   let related = close
   if (!close) {
-    const [{ data: friend }, { data: a }, { data: b }, { data: myRooms }, { data: theirRooms }] = await Promise.all([
+    const [{ data: friend }, { data: a }, { data: b }, together] = await Promise.all([
       admin.from('friendships').select('id').eq('requester_id', me).eq('addressee_id', id).eq('status', 'accepted').maybeSingle(),
       admin.from('pins').select('id').eq('pinner_id', me).eq('pinned_id', id).maybeSingle(),
       admin.from('pins').select('id, is_secret').eq('pinner_id', id).eq('pinned_id', me).maybeSingle(),
-      admin.from('room_members').select('room_id').eq('user_id', me),
-      admin.from('room_members').select('room_id').eq('user_id', id),
+      sharesRoomNow(admin, me, id),
     ])
     close = !!friend || (!!a && !!b)
-    const mine = new Set((myRooms ?? []).map(r => r.room_id as string))
     // 相手からのひみつのピンは数えない（性別が見えるかどうかで、ひみつのピンがばれないように）
-    related = close || !!a || (!!b && !b.is_secret) || (theirRooms ?? []).some(r => mine.has(r.room_id as string))
+    related = close || !!a || (!!b && !b.is_secret) || together
   }
 
   const gender = extra.error || !related ? null : (extra.data?.gender as string | null) ?? null
@@ -50,7 +48,5 @@ export async function GET(request: Request) {
     goal: goal.error ? null : (goal.data?.goal_exam as string | null) ?? null,
     premium: plan === 'premium',
     instagram: close ? instagram : null,
-    // フレンド・マッチ前は「登録あり」だけ伝える（マッチすると見られる楽しみ）
-    hasInstagram: !close && !!instagram,
   }, { headers: { 'Cache-Control': 'no-store' } })
 }

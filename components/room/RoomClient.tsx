@@ -326,7 +326,8 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
   // 自分から映像をつなぎにいくのは 8 人まで（何人でも入室できる。全員とつなぐと端末が重くなるため）
   // カメラ ON の人を先に（OFF の人で枠が埋まらないように）。相手からの接続は部屋の全員分受け入れる
   const otherMemberIds = orderedMembers.map((m: any) => m.user_id).filter((id: string) => id !== profile.id)
-  const videoPeerIds = [...orderedMembers].filter((m: any) => m.user_id !== profile.id)
+  // 自分がカメラ OFF のときは、カメラ ON の人にだけ（受信専用で）つなぎにいく
+  const videoPeerIds = [...orderedMembers].filter((m: any) => m.user_id !== profile.id && (cameraOn || m.camera_on))
     .sort((a: any, b: any) => Number(!!b.camera_on) - Number(!!a.camera_on))
     .map((m: any) => m.user_id).slice(0, MAX_VIDEO_PEERS)
   const { localStream, remoteStreams, relayStatus } = useWebRTC(room.id, profile.id, cameraOn, otherMemberIds, videoPeerIds)
@@ -568,7 +569,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
     if (!schedTitle) { showToast(tr('❌ タイトルを入力してください', '❌ Enter a title')); return }
     if (!schedDate) { showToast(tr('❌ 日付を選択してください', '❌ Choose a date')); return }
     if (!schedTime) { showToast(tr('❌ 時刻を選択してください', '❌ Choose a time')); return }
-    // 勉強会はこの部屋で開く（新しい部屋は作らない）。くり返し・招待はロビーの「友達との勉強会」から
+    // 勉強会はこの部屋で開く（新しい部屋は作らない）。くり返し・招待はロビーの「フレンドと勉強会」から
     const res = await fetch('/api/study-group', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title: schedTitle, date: schedDate, time: schedTime, durationMins: schedDuration, repeatDays: [], roomId: room.id }),
@@ -581,7 +582,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
     }
     setShowScheduler(false); setSchedTitle(''); fetchSessions()
     addNotif('📅', tr(`勉強会「${schedTitle}」を予約しました`, `Scheduled "${schedTitle}"`))
-    showToast(tr('📅 予約しました！友達の招待やくり返しはロビーの「友達との勉強会」からできます', '📅 Scheduled! Invite friends from the lobby'))
+    showToast(tr('📅 予約しました！友達の招待やくり返しはロビーの「フレンドと勉強会」からできます', '📅 Scheduled! Invite friends from the lobby'))
   }
   async function copySessionInvite(code: string) {
     const url = `${window.location.origin}/invite/${code}`
@@ -1172,7 +1173,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                   {streak > 0 && <span className={styles.ssChip}>{lang==='ja'?`${streak}日連続`:`${streak}-day streak`}</span>}
                 </div>
                 <div className={styles.ssTileBottom}>
-                  <button className={styles.ssName} onClick={() => setShowProfileEdit(true)} title={lang==='ja'?'プロフィールを編集':'Edit profile'}>{profile.display_name} <span style={{ opacity:.6 }}>{lang==='ja'?'(あなた)':'(you)'}</span></button>
+                  <button className={styles.ssName} onClick={() => setShowProfileEdit(true)} title={lang==='ja'?'プロフィールを編集':'Edit profile'}>{profile.display_name} <span style={{ opacity:.6 }}>{lang==='ja'?'（自分）':'(you)'}</span></button>
                   {mySubject && <span className={styles.ssChip}>{mySubject}</span>}
                 </div>
                 {(() => { const dm = dailyMessages.find((d: any) => d.user_id === profile.id); return dm ? <div className={styles.ssBubble}>{dm.content}</div> : null })()}
@@ -1204,7 +1205,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                       </span>
                       {(() => {
                         // 関係の印は 1 つだけ（多すぎると読めないので）：仲間 → きょうのとなり → 同じ目標 → あなたをピン → ピン中
-                        if (matchedIds.has(m.user_id)) return <span className={`${styles.ssChip} ${styles.ssChipPair}`}>🤝 {lang==='ja'?'仲間':'Buddy'}</span>
+                        if (matchedIds.has(m.user_id)) return <span className={`${styles.ssChip} ${styles.ssChipPair}`}>🤝 {lang==='ja'?'勉強仲間':'Buddy'}</span>
                         if (m.user_id === neighborId) return <span className={`${styles.ssChip} ${styles.ssChipSeat}`} title={lang==='ja'?'毎日ひとり、となりの席の人が選ばれます。今日はこの人と一緒にがんばろう':'A new neighbor is picked every day'}>🪑 {lang==='ja'?'きょうのとなり':'Your neighbor'}</span>
                         if (myGoal && memberGoals[m.user_id] === myGoal) return <span className={styles.ssChip}>🎯 {lang==='ja'?'同じ目標':'Same goal'}</span>
                         if (pinFrom(m.user_id)) return <span className={styles.ssChip} title={pinFrom(m.user_id)?.reason ?? ''}>📌 {lang==='ja'?'あなたをピン':'Pinned you'}</span>
@@ -1222,7 +1223,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                       ) : (
                         <button title={lang==='ja'?'一緒に勉強しよう（フレンド申請）':'Study together (add friend)'} aria-label={lang==='ja'?'一緒に勉強しよう（フレンド申請）':'Study together (add friend)'} onClick={() => requestFriend(m.user_id, mp.display_name)}><Icon name="userPlus" size={14}/></button>
                       )}
-                      {isFriend && <button title={lang==='ja'?'一緒に勉強しよう（ペア申請）':'Study together (pair)'} aria-label={lang==='ja'?'一緒に勉強しよう（ペア申請）':'Study together (pair)'} onClick={() => studyTogetherWith(m.user_id, mp.display_name)}><Icon name="users" size={14}/></button>}
+                      {isFriend && <button title={lang==='ja'?'となりで25分やろう（フレンドを誘う）':'Invite friend to study'} aria-label={lang==='ja'?'となりで25分やろう（フレンドを誘う）':'Invite friend to study'} onClick={() => studyTogetherWith(m.user_id, mp.display_name)}><Icon name="users" size={14}/></button>}
                       <button title={lang==='ja'?'報告':'Report'} aria-label={lang==='ja'?'報告':'Report'} onClick={() => setReportModal({ userId:m.user_id, name:mp.display_name })}><Icon name="flag" size={14}/></button>
                       <button title={lang==='ja'?'ブロック':'Block'} aria-label={lang==='ja'?'ブロック':'Block'} onClick={() => setBlockModal({ userId:m.user_id, name:mp.display_name })}><Icon name="x" size={14}/></button>
                     </div>
@@ -1232,14 +1233,14 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
                       {(() => {
                         const matched = matchedIds.has(m.user_id)
                         const secretPin = !!getMyPin(m.user_id)?.is_secret
-                        const label = matched ? (lang==='ja'?'🤝 仲間':'🤝 Buddy')
+                        const label = matched ? (lang==='ja'?'🤝 勉強仲間':'🤝 Buddy')
                           : isPinnedUser ? (secretPin ? (lang==='ja'?'🤫 ひみつ':'🤫 Secret') : (lang==='ja'?'📌 ピン中':'📌 Pinned'))
                           : (lang==='ja'?'📌 ピン':'📌 Pin')
                         const hint = matched ? (lang==='ja'?`${mp.display_name}さんとは勉強仲間です（お互いにピン）`:'You pinned each other')
                           : isPinnedUser ? (lang==='ja'?`${mp.display_name}さんをピンしています。タップで理由の変更・解除`:'Pinned. Tap to edit')
                           : (lang==='ja'?`${mp.display_name}さんをピン。一緒にがんばりたい人をピンして、お互いにピンすると勉強仲間になれます`:'Pin to become study buddies')
                         return (
-                          <button type="button" title={hint} aria-label={hint} aria-pressed={isPinnedUser}
+                          <button type="button" title={hint} aria-label={matched ? (lang==='ja'?`${mp.display_name}さんとは勉強仲間（ピンを編集）`:'Edit pin') : isPinnedUser ? (lang==='ja'?`${mp.display_name}さんのピンを編集`:'Edit pin') : (lang==='ja'?`${mp.display_name}さんをピン`:`Pin ${mp.display_name}`)} aria-pressed={isPinnedUser}
                             className={`${styles.ssPinBtn} ${isPinnedUser?styles.ssPinBtnOn:''} ${matched?styles.ssPinBtnPair:''}`}
                             onClick={() => onPinClick(m.user_id, mp.display_name)}>{label}</button>
                         )
@@ -1274,7 +1275,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
             </button>
             <div className={`${styles.ssDockBtn} ${styles.ssDockOff}`} title={T.noTalk} style={{ cursor:'default' }}>
               <span className={styles.ssDockIcon}><Icon name="micOff"/></span>
-              <span className={styles.ssDockLbl}>{lang==='ja'?'マイク禁止':'No mic'}</span>
+              <span className={styles.ssDockLbl}>{lang==='ja'?'マイクなし':'No mic'}</span>
             </div>
             <div className={styles.ssDockSep}/>
             {DOCK_PANELS.map(p => {
@@ -1289,7 +1290,7 @@ export default function RoomClient({ profile, room, allRooms, initialMembers, in
             <div className={styles.ssDockSep}/>
             <button className={`${styles.ssDockBtn} ${showPinnedFilter?styles.ssDockActive:''}`} onClick={() => setShowPinnedFilter(v => !v)} title={T.pinnedOnly}>
               <span className={styles.ssDockIcon}><Icon name="pin"/></span>
-              <span className={styles.ssDockLbl}>{lang==='ja'?'ピンした人':'Pinned'}</span>
+              <span className={styles.ssDockLbl}>{lang==='ja'?'ピン・仲間':'Pins'}</span>
             </button>
             <button className={styles.ssDockBtn} onClick={() => setZen(true)} title={lang==='ja'?'集中モード (Esc で戻る)':'Focus mode (Esc to exit)'}>
               <span className={styles.ssDockIcon}><Icon name="focus"/></span>

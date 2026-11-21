@@ -9,8 +9,20 @@
 -- 実行後は supabase/tests/security_audit.sql を流して「✅ 問題なし」を確認すること
 -- ============================================================
 
--- 高1
-revoke execute on function public.toggle_pin(uuid) from authenticated;
+-- 高1：古いピンの RPC は消す（ピンは /api/pins だけ）
+drop function if exists public.toggle_pin(uuid);
+
+-- ピンを付けた記録（外しても消えない）。1 日の上限はこれで数える。サーバー専用
+create table if not exists public.pin_events (
+  id         bigint generated always as identity primary key,
+  pinner_id  uuid not null references public.profiles(id) on delete cascade,
+  pinned_id  uuid not null references public.profiles(id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+create index if not exists pin_events_pinner_idx on public.pin_events (pinner_id, created_at);
+alter table public.pin_events enable row level security;
+revoke all on public.pin_events from anon, authenticated;
+grant select, insert, delete on public.pin_events to service_role;
 
 -- 中3・中4：関係者かどうか（主催者か参加者）。自分についてしか答えない
 create or replace function public.is_session_member(p_session uuid)

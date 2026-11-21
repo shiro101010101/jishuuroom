@@ -29,3 +29,4 @@
 
 .removeText { margin-right: auto; background: transparent; border: none; color: var(--red); font-size: 13px; font-family: inherit; cursor: pointer; padding: 9px 4px; }
 .remove { margin-right: auto; padding: 9px 14px; border-radius: 10px; border: 1px solid rgba(239,68,68,.5); background: rgba(239,68,68,.12); color: var(--red); font-size: 13px; font-weight: 600; font-family: inherit; cursor: pointer; }
+.choice { display: flex; flex-direction: column; gap: 8px; }

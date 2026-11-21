@@ -233,10 +233,13 @@ export async function PATCH(request: Request) {
     case 'join': {
       if (!isHost && !invite && !access) return bad('この勉強会には招待されていません', 403)
       if (!isHost && (await isBlockedBetween(admin, userId, s.host_id))) return bad('この勉強会には参加できません', 403)
-      // 友達部屋の入室権は「参加」したときに付ける（招待されただけでは付けない）
+      // 友達部屋の入室権は「参加」したときに付ける（招待されただけでは付けない）。部屋を作った人とのブロックも確かめる
       if (s.room_id) {
-        const { data: r } = await admin.from('rooms').select('is_private').eq('id', s.room_id).maybeSingle()
-        if (r?.is_private) await grantRoomAccess(admin, s.room_id, userId)
+        const { data: r } = await admin.from('rooms').select('is_private, created_by').eq('id', s.room_id).maybeSingle()
+        if (r?.is_private) {
+          if (r.created_by && r.created_by !== userId && (await isBlockedBetween(admin, userId, r.created_by))) return bad('この勉強会には参加できません', 403)
+          await grantRoomAccess(admin, s.room_id, userId)
+        }
       }
       const { error } = await admin.from('session_participants').upsert({ session_id: s.id, user_id: userId }, { onConflict: 'session_id,user_id' })
       if (error) return bad('参加できませんでした', 500)
@@ -256,7 +259,7 @@ export async function PATCH(request: Request) {
       if (!invite && !part) return bad('この勉強会には招待されていません', 403)
       await admin.from('session_participants').delete().eq('session_id', s.id).eq('user_id', userId)
       await admin.from('session_invites').upsert(
-        { session_id: s.id, user_id: userId, invited_by: s.host_id, status: 'declined' }, { onConflict: 'session_id,user_id' })
+        { session_id: s.id, user_id: userId, invited_by: s.host_id, status: 'declined', created_at: new Date().toISOString() }, { onConflict: 'session_id,user_id' })
       return NextResponse.json({ ok: true })
     }
     case 'leave': {

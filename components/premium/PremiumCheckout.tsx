@@ -5,11 +5,13 @@ import { useState } from 'react'
 import Link from 'next/link'
 import styles from './Premium.module.css'
 
-export default function PremiumCheckout({ mode, ready, monthlyYen = 0, yearlyYen = 0 }: {
+export default function PremiumCheckout({ mode, ready, monthlyYen = 0, yearlyYen = 0, lockedBirth = null }: {
   mode: 'subscribe' | 'manage'; ready: boolean; monthlyYen?: number; yearlyYen?: number
+  /** 以前の申し込みで入力した生年月日（変更できない） */
+  lockedBirth?: string | null
 }) {
   const [interval, setInterval] = useState<'monthly' | 'yearly'>('monthly')
-  const [birth, setBirth] = useState('')
+  const [birth, setBirth] = useState(lockedBirth ?? '')
   const [guardian, setGuardian] = useState(false)
   const [agree, setAgree] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -18,9 +20,9 @@ export default function PremiumCheckout({ mode, ready, monthlyYen = 0, yearlyYen
   const age = (() => {
     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(birth)
     if (!m) return null
-    const now = new Date()
-    let a = now.getFullYear() - +m[1]
-    if (now.getMonth() + 1 < +m[2] || (now.getMonth() + 1 === +m[2] && now.getDate() < +m[3])) a--
+    const j = new Date(Date.now() + 9 * 3_600_000) // サーバーと同じく日本時間の今日で数える
+    let a = j.getUTCFullYear() - +m[1]
+    if (j.getUTCMonth() + 1 < +m[2] || (j.getUTCMonth() + 1 === +m[2] && j.getUTCDate() < +m[3])) a--
     return a
   })()
   const minor = age !== null && age < 18
@@ -56,10 +58,11 @@ export default function PremiumCheckout({ mode, ready, monthlyYen = 0, yearlyYen
         <button type="button" role="radio" aria-checked={effInterval === 'monthly'} className={effInterval === 'monthly' ? styles.segOn : ''} onClick={() => setInterval('monthly')}>月額 ¥{monthlyYen.toLocaleString()}</button>
         <button type="button" role="radio" aria-checked={effInterval === 'yearly'} disabled={minor} className={effInterval === 'yearly' ? styles.segOn : ''} onClick={() => setInterval('yearly')}>年額 ¥{yearlyYen.toLocaleString()}</button>
       </div>
+      {minor && <p className={styles.small}>18歳未満の方は月額プランだけ選べます。</p>}
 
       <label className={styles.label}>
         生年月日
-        <input type="date" className={styles.input} value={birth} max={new Date().toISOString().slice(0, 10)} onChange={e => setBirth(e.target.value)}/>
+        <input type="date" className={styles.input} value={birth} readOnly={!!lockedBirth} aria-readonly={!!lockedBirth} max={new Date().toISOString().slice(0, 10)} onChange={e => { if (!lockedBirth) setBirth(e.target.value) }}/>
       </label>
       <p className={styles.small}>
         生年月日を偽って申し込むと、あとで未成年であることを理由に取り消せなくなることがあります。18歳未満の方は、必ず保護者の方と一緒に申し込んでください。一度入力した生年月日は変更できません。
@@ -77,7 +80,7 @@ export default function PremiumCheckout({ mode, ready, monthlyYen = 0, yearlyYen
         <dl>
           <dt>内容</dt><dd>プレミアム（勉強会の主催10個まで・ひみつのピン100人まで・Premiumバッジ）</dd>
           <dt>お支払い金額</dt><dd>¥{price.toLocaleString()}（税込）／{effInterval === 'yearly' ? '1年' : '1か月'}</dd>
-          <dt>お支払い方法</dt><dd>クレジットカードなど（決済代行：Stripe）</dd>
+          <dt>お支払い方法</dt><dd>クレジットカード（Visa・Mastercard・JCB・American Express）。決済代行：Stripe</dd>
           <dt>お支払い時期</dt><dd>今日 初回分を請求し、以後{effInterval === 'yearly' ? '1年' : '1か月'}ごとに自動で更新・請求します</dd>
           <dt>提供時期</dt><dd>決済の完了後、すぐに使えます</dd>
           <dt>契約期間</dt><dd>{effInterval === 'yearly' ? '1年' : '1か月'}（解約するまで同じ期間で自動更新）</dd>

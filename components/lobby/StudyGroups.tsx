@@ -1,5 +1,5 @@
 'use client'
-// components/lobby/StudyGroups.tsx — ロビーの「友達との勉強会」
+// components/lobby/StudyGroups.tsx — ロビーの「フレンドと勉強会」
 // 1 回だけ・毎週（曜日を選ぶ）の勉強会を作り、フレンドを招待する。招待された人は参加／辞退を選べる
 // 開始 10〜15 分前に参加者へプッシュ通知（/api/cron/sessions）。データは /api/study-group
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -174,7 +174,7 @@ export default function StudyGroups({ demoData }: { demoData?: unknown } = {}) {
         ...(weekly ? { repeatDays: days } : { date, repeatDays: [] }),
         roomId: roomId || undefined, friendIds: friendSel,
       })
-      setToast(r.invited > 0 ? `📅 勉強会を作り、${r.invited}人に招待を送りました` : '📅 勉強会を作りました。友達を招待しましょう')
+      setToast(r.invited > 0 ? `📅 勉強会を作り、${r.invited}人に招待を送りました` : '📅 勉強会を作りました。フレンドを招待しましょう')
       setOpen(false); setTitle(''); setDays([]); setFriendSel([]); setRoomId(''); setWeekly(false); setDT(defaultDateTime())
       setShowPush(true)
       await load()
@@ -187,7 +187,7 @@ export default function StudyGroups({ demoData }: { demoData?: unknown } = {}) {
   return (
     <section id="study-groups" className={styles.wrap}>
       <div className={styles.head}>
-        <h2 className={styles.h2}>友達との勉強会{invitedCount > 0 && <span className={styles.badge}>招待 {invitedCount}</span>}</h2>
+        <h2 className={styles.h2}>フレンドと勉強会{invitedCount > 0 && <span className={styles.badge}>招待 {invitedCount}</span>}</h2>
         {!open && <button type="button" className={styles.primary} onClick={() => setOpen(true)}>＋ 勉強会を作る</button>}
       </div>
 
@@ -321,7 +321,7 @@ export default function StudyGroups({ demoData }: { demoData?: unknown } = {}) {
                   )}
                   {(s.status === 'host' || s.status === 'going') && (
                     <>
-                      <button type="button" className={styles.ghost} onClick={() => { setInviting(inviting === s.id ? null : s.id); setInviteSel([]) }}>友達を招待</button>
+                      <button type="button" className={styles.ghost} onClick={() => { setInviting(inviting === s.id ? null : s.id); setInviteSel([]) }}>フレンドを招待</button>
                       {s.inviteCode && <button type="button" className={styles.ghost} onClick={() => copyLink(s)}>🔗 リンクをコピー</button>}
                     </>
                   )}

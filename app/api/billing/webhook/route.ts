@@ -20,6 +20,22 @@ function periodEnd(sub: StripeSubscription): string {
   return new Date(sec * 1000).toISOString()
 }
 
+/** 二重契約になったサブスクを解約し、最初の請求を返金する（失敗はログに残し、手作業で対応する） */
+async function refundAndCancelDuplicate(subscriptionId: string) {
+  try {
+    const s = await stripe<{ latest_invoice?: string | null }>('GET', `subscriptions/${subscriptionId}`)
+    await stripe('DELETE', `subscriptions/${subscriptionId}`)
+    if (s.latest_invoice) {
+      const inv = await stripe<{ payment_intent?: string | null; charge?: string | null }>('GET', `invoices/${s.latest_invoice}`)
+      if (inv.payment_intent) await stripe('POST', 'refunds', { payment_intent: inv.payment_intent }, { idempotencyKey: `dup-refund-${subscriptionId}` })
+      else if (inv.charge) await stripe('POST', 'refunds', { charge: inv.charge }, { idempotencyKey: `dup-refund-${subscriptionId}` })
+    }
+    console.warn('duplicate subscription canceled and refunded:', subscriptionId)
+  } catch (e) {
+    console.error('duplicate subscription cleanup failed (要手動対応):', subscriptionId, e)
+  }
+}
+
 async function syncSubscription(subscriptionId: string, fallbackUserId?: string) {
   const sub = await stripe<StripeSubscription>('GET', `subscriptions/${subscriptionId}`)
   const admin = createAdminClient()
@@ -34,8 +50,11 @@ async function syncSubscription(subscriptionId: string, fallbackUserId?: string)
     .select('stripe_subscription_id, status, current_period_end').eq('user_id', userId).maybeSingle()
   const currentActive = current && ACTIVE_SUB_STATUSES.has(current.status) && current.current_period_end
     && new Date(current.current_period_end).getTime() > Date.now()
-  if (currentActive && current.stripe_subscription_id && current.stripe_subscription_id !== sub.id && !ACTIVE_SUB_STATUSES.has(sub.status)) {
-    return // 別の有効なサブスクがあるので、この（有効でない）サブスクでは上書きしない
+  if (currentActive && current.stripe_subscription_id && current.stripe_subscription_id !== sub.id) {
+    if (!ACTIVE_SUB_STATUSES.has(sub.status)) return // 別の有効なサブスクがあるので、この（有効でない）サブスクでは上書きしない
+    // 有効なサブスクが 2 つ目 → 二重契約なので、後から来た方をすぐ解約して返金する
+    await refundAndCancelDuplicate(sub.id)
+    return
   }
 
   const { error } = await admin.from('subscriptions').upsert({

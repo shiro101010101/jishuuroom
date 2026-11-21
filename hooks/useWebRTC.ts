@@ -28,6 +28,9 @@ type Peer = {
 
 type Signal = { id: string; room_id?: string; from_user: string; type: string; payload: any }
 
+/** 同時につなぐ相手の上限（受け入れも含む）。大きな部屋で端末が重くならないように */
+const MAX_PEERS = 16
+
 /**
  * @param memberIds 今ルームに接続している他のメンバー（自分以外）。この人たちからの接続は受け入れる
  * @param initiateIds 自分から映像をつなぎにいく相手（人数の上限つき）。省略時は memberIds 全員。
@@ -62,6 +65,8 @@ export function useWebRTC(roomId: string, userId: string, cameraOn: boolean, mem
   // 今この部屋にいるメンバーだけと通信する（部屋の外の人から接続を求められても応じない）
   const memberIdsRef = useRef<string[]>(memberIds)
   memberIdsRef.current = memberIds
+  const initiateRef = useRef<string[] | undefined>(initiateIds)
+  initiateRef.current = initiateIds
   // メンバー一覧の反映より先に届いたシグナルは少しだけ保留する
   const heldRef = useRef<{ s: Signal; at: number }[]>([])
 
@@ -156,6 +161,8 @@ export function useWebRTC(roomId: string, userId: string, cameraOn: boolean, mem
 
   async function handleSignal({ from_user: from, type, payload }: Signal) {
     if (type === 'bye') { closePeer(from); return }
+    // 上限に達していたら、新しい相手からの接続は受け入れない（自分から選んだ相手は除く）
+    if (!peersRef.current.has(from) && peersRef.current.size >= MAX_PEERS && !(initiateRef.current ?? []).includes(from)) return
     const peer = ensurePeer(from)
     if (!peer) return
     const { pc } = peer
@@ -208,7 +215,15 @@ export function useWebRTC(roomId: string, userId: string, cameraOn: boolean, mem
   const memberKey = [...memberIds].sort().join(',')
   const initiateKey = (initiateIds ?? memberIds).join(',')
   useEffect(() => {
-    if (localStream) (initiateIds ?? memberIds).forEach(id => { if (id !== userId && memberIds.includes(id)) ensurePeer(id) })
+    // 自分から選んだ相手につなぐ。カメラ OFF のときは「受信だけ」でつなぐ（見ているだけの人にも映像が届くように）
+    ;(initiateIds ?? memberIds).forEach(id => {
+      if (id === userId || !memberIds.includes(id)) return
+      const existed = peersRef.current.has(id)
+      const peer = ensurePeer(id)
+      if (peer && !existed && !localStreamRef.current && peer.pc.getTransceivers().length === 0) {
+        peer.pc.addTransceiver('video', { direction: 'recvonly' })
+      }
+    })
     // いなくなった人との接続は閉じる
     peersRef.current.forEach((_, id) => { if (!memberIds.includes(id)) closePeer(id) })
   }, [localStream, memberKey, initiateKey, relayStatus])

@@ -51,18 +51,15 @@ export async function POST(request: Request) {
   if (!me || me.is_banned) return bad('Forbidden', 403)
   if ((await getPlan(admin, userId)) === 'premium') return bad('すでにプレミアムです')
 
-  // 生年月日は一度入れたら変えられない（変えたいときはお問い合わせ）。年齢を偽って取り消し対策をすり抜けないように
-  const { data: firstConsent } = await admin.from('billing_consents').select('birth_date').eq('user_id', userId)
-    .order('created_at', { ascending: true }).limit(1).maybeSingle()
+  // 生年月日は、一度でも契約したことがあれば変えられない（変えたいときはお問い合わせ）。年齢を偽って取り消し対策をすり抜けないように
+  // （決済しないまま終わった申し込みの入力では固定しない。打ち間違いで止まらないように）
+  const { data: subRow } = await admin.from('subscriptions').select('stripe_subscription_id').eq('user_id', userId).maybeSingle()
+  const { data: firstConsent } = subRow?.stripe_subscription_id
+    ? await admin.from('billing_consents').select('birth_date').eq('user_id', userId).order('created_at', { ascending: true }).limit(1).maybeSingle()
+    : { data: null }
   if (firstConsent && firstConsent.birth_date !== String(body.birthDate)) {
     return bad('生年月日が以前の申し込みと違います。変更が必要な場合はお問い合わせください')
   }
-
-  // 同意の記録（後から確認できるように）。テーブルが無いときは申し込ませない
-  const { error: consentErr } = await admin.from('billing_consents').insert({
-    user_id: userId, birth_date: String(body.birthDate), is_minor: minor, guardian_consent: minor ? true : null, plan_interval: interval,
-  })
-  if (consentErr) { console.error('billing consent error:', consentErr); return bad('申し込みの準備ができていません（データベースの更新が必要です）', 500) }
 
   // Stripe の顧客（1 人 1 つ）
   const { data: sub } = await admin.from('subscriptions').select('stripe_customer_id').eq('user_id', userId).maybeSingle()
@@ -80,7 +77,17 @@ export async function POST(request: Request) {
     if (list.data.some(x => ACTIVE_SUB_STATUSES.has(x.status) || x.status === 'incomplete')) {
       return bad('お申し込みの手続き中か、すでに契約があります。反映まで少しお待ちいただくか「お支払いの管理」をご確認ください', 409)
     }
+    // 開いたままの古い決済ページは期限切れにする（2 つのタブで両方支払われて二重契約になるのを防ぐ）
+    const open = await stripe<{ data: { id: string }[] }>('GET', 'checkout/sessions', { customer, status: 'open', limit: 10 })
+    for (const o of open.data) await stripe('POST', `checkout/sessions/${o.id}/expire`).catch(() => {})
   } catch { return bad('決済の準備ができませんでした。時間をおいてもう一度お試しください', 502) }
+
+  // 同意の記録（後から確認できるように）。テーブルが無いときは申し込ませない
+  const { error: consentErr } = await admin.from('billing_consents').insert({
+    user_id: userId, birth_date: String(body.birthDate), is_minor: minor, guardian_consent: minor ? true : null, plan_interval: interval,
+  })
+  if (consentErr) { console.error('billing consent error:', consentErr); return bad('申し込みの準備ができていません（データベースの更新が必要です）', 500) }
+
 
   const origin = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') || new URL(request.url).origin
   const price = interval === 'yearly' ? process.env.STRIPE_PRICE_YEARLY! : process.env.STRIPE_PRICE_MONTHLY!
@@ -91,10 +98,11 @@ export async function POST(request: Request) {
       client_reference_id: userId,
       line_items: [{ price, quantity: 1 }],
       locale: 'ja',
-      allow_promotion_codes: 'true',
+      // 表示どおりの金額で請求する（クーポンで初回の金額が変わると、確認画面の表示と食い違うため使わない）
+      payment_method_types: ['card'],
       subscription_data: { metadata: { user_id: userId } },
       // 決済ページの申込みボタンの近くにも、自動更新と解約方法を示す（最終確認画面の表示）
-      custom_text: { submit: { message: `自動更新の定期契約です。${interval === 'yearly' ? '1年' : '1か月'}ごとに¥${(interval === 'yearly' ? PRICES.yearly.yen : PRICES.monthly.yen).toLocaleString()}（税込）を自動で請求します。解約は${SITE.name}の「プレミアム」→「お支払いの管理・解約」から、次回更新日の前までにいつでもできます。お支払い済みの料金の返金・日割りはありません（法令で認められる場合を除く）。` } },
+      custom_text: { submit: { message: `自動更新の定期契約です。決済の完了後すぐにプレミアムを使えます。${interval === 'yearly' ? '1年' : '1か月'}ごとに¥${(interval === 'yearly' ? PRICES.yearly.yen : PRICES.monthly.yen).toLocaleString()}（税込）を自動で請求します。解約は${SITE.name}の「プレミアム」→「お支払いの管理・解約」から、次回更新日の前までにいつでもできます。解約後も更新日までは使えます。お支払い済みの料金の返金・日割りはありません（法令で認められる場合を除く）。` } },
       // Stripe ダッシュボードに利用規約の URL を登録したら STRIPE_REQUIRE_TOS=1 にする（未登録だとエラーになるため）
       ...(process.env.STRIPE_REQUIRE_TOS === '1' ? { consent_collection: { terms_of_service: 'required' } } : {}),
       metadata: { user_id: userId },

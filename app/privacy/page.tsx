@@ -2,11 +2,15 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { SITE } from '@/lib/site'
+import { legalInfo } from '@/lib/legal'
 import styles from '@/components/legal/Legal.module.css'
 
 export const metadata: Metadata = { title: `プライバシーポリシー | ${SITE.name}`, alternates: { canonical: '/privacy' } }
 
+export const dynamic = 'force-dynamic'
+
 export default function PrivacyPage() {
+  const l = legalInfo()
   return (
     <div className={styles.page}>
       <article className={styles.doc}>
@@ -68,7 +72,7 @@ export default function PrivacyPage() {
           <li>jsDelivr（顔検出の部品の配信）：利用時に IP アドレスが送信されます</li>
           <li>Stripe, Inc.（米国）：有料プランの決済処理（カード情報は Stripe が管理します）</li>
         </ul>
-        <p>米国およびアイルランド（EU）の個人情報保護制度については、個人情報保護委員会のウェブサイトで公表されている情報をご参照ください。これらの事業者は、個人情報の保護に関する国際的な枠組みに沿った安全管理措置を講じています。</p>
+        <p>米国およびアイルランド（EU）の個人情報保護制度については、個人情報保護委員会のウェブサイトで公表されている情報をご参照ください。これらの事業者は、個人情報の保護に関する国際的な枠組みに沿った安全管理措置を講じています。運営者は、各事業者の利用規約・データ処理に関する契約（DPA）により、委託した情報を目的外に利用しないこと、適切な安全管理措置（暗号化・アクセス制限など）を講じることを確認しています。</p>
 
         <h2>6-2. 保存期間</h2>
         <p>有料プランの申し込み時の同意の記録（生年月日・保護者の同意の有無）は、請求や取消しに関する問い合わせに対応するため、アカウントを削除した後も申し込みから5年間保存し、その後削除します。</p>
@@ -90,6 +94,13 @@ export default function PrivacyPage() {
 
         <h2>11. 改定</h2>
         <p>本ポリシーは必要に応じて改定し、本ページでお知らせします。</p>
+
+        <h2>事業者の情報</h2>
+        <p>
+          事業者名：{l.seller || SITE.operator}<br/>
+          代表者：{l.manager || l.seller || '（準備中）'}<br/>
+          住所：{l.address}
+        </p>
 
         <h2>お問い合わせ</h2>
         <p>{SITE.operator}<br/>{SITE.contact ? <a href={SITE.contact.includes('@') ? `mailto:${SITE.contact}` : SITE.contact}>{SITE.contact}</a> : 'お問い合わせ窓口はサービス内でお知らせします。'}</p>

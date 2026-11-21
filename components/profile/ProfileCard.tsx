@@ -75,7 +75,7 @@ export default function ProfileCard({ userId, lang = 'ja', onClose, children }: 
                 {since && <div className={styles.viewSub}>{ja ? `${since.getFullYear()}年${since.getMonth() + 1}月から利用` : `Joined ${since.toLocaleDateString('en', { year: 'numeric', month: 'short' })}`}</div>}
               </div>
             </div>
-            {extra && (extra.premium || extra.gender || extra.goal || extra.instagram || extra.hasInstagram) && (
+            {extra && (extra.premium || extra.gender || extra.goal || extra.instagram) && (
               <div className={styles.extraRow}>
                 {extra.premium && <span className={`${styles.extraChip} ${styles.premiumChip}`}>✦ Premium</span>}
                 {extra.goal && examLabel(extra.goal) && <span className={styles.extraChip}>🎯 {examLabel(extra.goal)}</span>}
@@ -83,7 +83,6 @@ export default function ProfileCard({ userId, lang = 'ja', onClose, children }: 
                 {extra.instagram && (
                   <a className={styles.extraChip} href={`https://www.instagram.com/${encodeURIComponent(extra.instagram)}/`} target="_blank" rel="noopener noreferrer nofollow">📷 @{extra.instagram}</a>
                 )}
-                {!extra.instagram && extra.hasInstagram && <span className={styles.extraChip}>📷 {ja ? 'Instagram はマッチすると見られます' : 'Instagram unlocks when you match'}</span>}
               </div>
             )}
             <div className={styles.bio}>

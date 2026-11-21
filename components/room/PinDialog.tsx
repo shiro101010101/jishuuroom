@@ -27,6 +27,13 @@ export default function PinDialog({ name, lang = 'ja', initial, mutual = false, 
   const [error, setError] = useState<{ text: string; upgrade?: boolean } | null>(null)
   const [confirmRemove, setConfirmRemove] = useState(false)
   const [titleId] = useState(() => `pin-dialog-title-${++idSeq}`)
+  // マウスのある端末だけ最初に入力欄へ（スマホで開いた瞬間にキーボードが説明を隠さないように）
+  const [canHover] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.('(hover: hover)').matches)
+  // 閉じたら、開く前にフォーカスしていたボタンへ戻す
+  useEffect(() => {
+    const prev = document.activeElement as HTMLElement | null
+    return () => { try { prev?.focus() } catch {} }
+  }, [])
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
   useEffect(() => {
@@ -53,20 +60,23 @@ export default function PinDialog({ name, lang = 'ja', initial, mutual = false, 
           : (ja ? '一緒にがんばりたい人をピンしておけます。お互いにピンすると勉強仲間になり、フレンドとしてメッセージできます。' : 'Pin people you want to study with. Pin each other to become study buddies.')}</p>
 
         <label className={styles.label}>{ja ? 'ピンした理由（任意・50文字まで）' : 'Why? (optional)'}</label>
-        <input className={styles.input} value={reason} maxLength={50} autoFocus placeholder={ja ? '例：同じ共通テスト組！' : 'e.g. Same exam!'} onChange={e => setReason(e.target.value)}/>
+        <input className={styles.input} value={reason} maxLength={50} autoFocus={canHover} placeholder={ja ? '例：同じ共通テスト組！' : 'e.g. Same exam!'} onChange={e => setReason(e.target.value)}/>
         <div className={styles.chips}>
           {REASONS.map(r => <button type="button" key={r} className={styles.chip} onClick={() => setReason(r)}>{r}</button>)}
         </div>
 
-        <button type="button" className={`${styles.secret} ${secret ? styles.secretOn : ''}`} aria-pressed={secret} onClick={() => setSecret(v => !v)}>
-          <span className={styles.secretIcon}>{secret ? '🤫' : '👀'}</span>
-          <span>
-            <b>{secret ? (ja ? 'ひみつのピン' : 'Secret pin') : (ja ? '相手に知らせるピン' : 'Visible pin')}</b>
-            <small>{secret
-              ? (ja ? '相手には知られません。相手もあなたをピンしたときだけ「実は…」と二人に明かされます' : 'Revealed only if they pin you too')
-              : (ja ? '相手に「ピンされました」と理由が届きます' : 'They will see your pin and reason')}</small>
-          </span>
-        </button>
+        <div className={styles.choice} role="radiogroup" aria-label={ja ? 'ピンの種類' : 'Pin type'}>
+          {([
+            [false, '👀', ja ? '相手に知らせる' : 'Visible', ja ? '相手に「ピンされました」と理由が届きます' : 'They will see your pin and reason'],
+            [true, '🤫', ja ? 'ひみつ' : 'Secret', ja ? '相手には知られません。相手もあなたをピンしたときだけ二人に明かされます' : 'Revealed only if they pin you too'],
+          ] as const).map(([val, icon, label, desc]) => (
+            <button key={String(val)} type="button" role="radio" aria-checked={secret === val}
+              className={`${styles.secret} ${secret === val ? styles.secretOn : ''}`} onClick={() => setSecret(val)}>
+              <span className={styles.secretIcon} aria-hidden>{icon}</span>
+              <span><b>{label}</b><small>{desc}</small></span>
+            </button>
+          ))}
+        </div>
 
         {error && (
           <div className={styles.error}>
