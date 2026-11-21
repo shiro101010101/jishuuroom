@@ -44,8 +44,10 @@ ng as (
   union all select '4. サーバー専用テーブルに権限: ' || privilege_type, table_name
     from information_schema.role_table_grants
     where table_schema = 'public' and grantee = 'authenticated'
-      and (table_name in ('banned_providers', 'safety_settings', 'push_subscriptions')
-           or (table_name = 'room_access' and privilege_type <> 'SELECT'))
+      and (table_name in ('banned_providers', 'safety_settings', 'push_subscriptions',
+                          'session_invites', 'pin_matches', 'pin_notices', 'pin_events', 'notice_log',
+                          'subscriptions', 'billing_consents', 'stripe_events')
+           or (table_name in ('room_access', 'scheduled_sessions', 'session_participants') and privilege_type <> 'SELECT'))
   -- 5. profiles の非公開列（provider_id・role・is_banned など）が読める
   union all select '5. 非公開の列が読める: ' || column_name, table_name
     from information_schema.column_privileges
