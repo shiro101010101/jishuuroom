@@ -272,7 +272,7 @@ BASE_URL=https://本番のURL npm run check:ui   # 公開中のサイトをチ�
 4. `supabase/migration_premium.sql` … プレミアム（課金状態・申し込み時の同意の記録）
 5. `supabase/migration_hardening_v2.sql` … セキュリティ再点検の対応（勉強会・参加者の書き込みをサーバー専用に、古い toggle_pin を無効化、ブロック時に入室権も削除、通知の連打防止、Stripe イベントの重複防止）
 6. `supabase/migration_account_delete.sql` … 退会（アカウント削除）に対応（削除を止める外部キーを set null に。アプリストアの必須要件）
-6. 最後に `supabase/tests/security_audit.sql` で「✅ 問題なし」を確認
+7. 最後に `supabase/tests/security_audit.sql` で「✅ 問題なし」を確認
 
 ### 2. Stripe（プレミアム）
 1. Stripe で商品「プレミアム」を作り、価格を 2 つ作る：月額 480円・年額 3,800円（定期支払い・JPY）
