@@ -3,7 +3,7 @@ import { auth } from '@/auth'
 import { NextResponse } from 'next/server'
 
 // ログインなしで見られるパス
-const PUBLIC_EXACT = new Set(['/', '/banned', '/terms', '/privacy', '/premium', '/tokushoho', '/api/billing/webhook', '/manifest.json', '/sw.js', '/offline.html', '/favicon.ico', '/robots.txt', '/sitemap.xml', '/opengraph-image', '/twitter-image'])
+const PUBLIC_EXACT = new Set(['/', '/banned', '/terms', '/privacy', '/premium', '/tokushoho', '/account-deletion', '/api/billing/webhook', '/manifest.json', '/sw.js', '/offline.html', '/favicon.ico', '/robots.txt', '/sitemap.xml', '/opengraph-image', '/twitter-image'])
 // 前方一致で公開するパス（区切りの / まで含めて判定し、/api/authx のような別パスを巻き込まない）
 // /api/cron/ はログインなしで Vercel Cron から呼ばれる（ルートの中で CRON_SECRET を確認）。/r/ は紹介リンク
 const PUBLIC_PREFIXES = ['/api/auth/', '/invite/', '/icons/', '/library/', '/_next/', '/exam/', '/r/', '/api/cron/']

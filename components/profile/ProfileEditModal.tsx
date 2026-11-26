@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from '@/components/room/Icons'
 import { hasNgWord } from '@/lib/wordFilter'
+import { signOut } from 'next-auth/react'
+import { DELETE_CONFIRM_WORD } from '@/lib/account'
 import styles from './Profile.module.css'
 
 export type EditableProfile = { display_name: string; avatar_url: string | null; bio?: string | null; gender?: string | null; instagram?: string | null }
@@ -53,6 +55,22 @@ export default function ProfileEditModal({ profile, lang = 'ja', onClose, onSave
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
+  // 退会（アプリストアの必須要件）。確認の言葉を入れたときだけ消せる
+  const [deleting, setDeleting] = useState(false)
+  const [confirmText, setConfirmText] = useState('')
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const deleteAccount = async () => {
+    setDeleteBusy(true); setError('')
+    try {
+      const res = await fetch('/api/account', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirm: confirmText.trim() }) })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error || (ja ? '退会できませんでした' : 'Could not delete account'))
+      await signOut({ callbackUrl: '/?deleted=1' })
+    } catch (e) {
+      setError((e as Error).message)
+      setDeleteBusy(false)
+    }
+  }
 
   // Esc で閉じる（親の再描画で onClose が変わっても登録し直さない）
   const onCloseRef = useRef(onClose)
@@ -162,6 +180,29 @@ export default function ProfileEditModal({ profile, lang = 'ja', onClose, onSave
         </div>
 
         {error && <div className={styles.error}>{error}</div>}
+
+        {!deleting ? (
+          <button type="button" className={styles.textBtn} style={{ alignSelf: 'flex-start', opacity: .7 }} onClick={() => setDeleting(true)}>
+            {ja ? '退会する（アカウントを削除）' : 'Delete account'}
+          </button>
+        ) : (
+          <div className={styles.field} role="group" aria-label={ja ? '退会の確認' : 'Confirm account deletion'}>
+            <div className={styles.note} style={{ color: 'var(--text)' }}>
+              {ja
+                ? 'プロフィール・勉強記録・フレンド・ピン・メッセージがすべて消え、元に戻せません。プレミアムはすぐに解約されます（残りの期間の返金はありません）。'
+                : 'Your profile, study records, friends, pins and messages will be permanently deleted. Premium is canceled immediately without refund.'}
+            </div>
+            <input className={styles.input} value={confirmText} onChange={e => setConfirmText(e.target.value)}
+              placeholder={ja ? `確認のため「${DELETE_CONFIRM_WORD}」と入力` : `Type ${DELETE_CONFIRM_WORD} to confirm`} aria-label={ja ? '確認の言葉' : 'Confirmation'}/>
+            <div className={styles.btns}>
+              <button type="button" className={styles.ghost} onClick={() => { setDeleting(false); setConfirmText('') }} disabled={deleteBusy}>{ja ? 'やめる' : 'Cancel'}</button>
+              <button type="button" className={styles.primary} style={{ background: '#e5484d' }} onClick={deleteAccount}
+                disabled={deleteBusy || confirmText.trim() !== DELETE_CONFIRM_WORD}>
+                {deleteBusy ? (ja ? '処理中…' : 'Deleting…') : (ja ? '退会する' : 'Delete')}
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className={styles.btns}>
           <button type="button" className={styles.ghost} onClick={onClose}>{ja ? 'キャンセル' : 'Cancel'}</button>

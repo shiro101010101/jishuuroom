@@ -44,6 +44,12 @@ async function syncSubscription(subscriptionId: string, fallbackUserId?: string)
     userId = data?.user_id as string | undefined
   }
   if (!userId) { console.error('webhook: user not found for customer', sub.customer); return }
+  // 退会済みの人（profiles が無い）の通知は記録しない（保存すると外部キーで失敗し、Stripe が再送し続ける）
+  const { data: exists } = await admin.from('profiles').select('id').eq('id', userId).maybeSingle()
+  if (!exists) {
+    if (ACTIVE_SUB_STATUSES.has(sub.status)) await stripe('DELETE', `subscriptions/${sub.id}`) // 念のため、退会者への請求は止める
+    return
+  }
 
   const { data: current } = await admin.from('subscriptions')
     .select('stripe_subscription_id, status, current_period_end').eq('user_id', userId).maybeSingle()

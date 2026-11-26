@@ -9,5 +9,5 @@ export const SITE = {
   operator: process.env.NEXT_PUBLIC_OPERATOR_NAME || '自習室 JP 運営事務局',
   /** 問い合わせ先（メールアドレスまたはフォームの URL） */
   contact: process.env.NEXT_PUBLIC_CONTACT || '',
-  updatedAt: '2026年11月8日',
+  updatedAt: '2026年11月26日',
 }
